@@ -1,11 +1,5 @@
 # abusive
 
-<p align="center">
-  <br>
-  <img src="https://i.imgur.com/Mh13XWB.gif" alt="abusive">
-  <br>
-</p>
-
 ![Last version](https://img.shields.io/github/tag/kikobeats/abusive.svg?style=flat-square)
 [![Coverage Status](https://img.shields.io/coveralls/kikobeats/abusive.svg?style=flat-square)](https://coveralls.io/github/kikobeats/abusive)
 [![NPM Status](https://img.shields.io/npm/dm/abusive.svg?style=flat-square)](https://www.npmjs.org/package/abusive)
