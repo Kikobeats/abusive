@@ -71,11 +71,13 @@ jobs:
       - name: Test
         run: pnpm test
       - name: Report
-        run: npx c8 report --reporter=text-lcov > coverage/lcov.info
+        run: pnpm coverage
       - name: Coverage
         uses: coverallsapp/github-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Private repos are rejected without a paid Coveralls plan.
+          fail-on-error: false
       - name: Release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

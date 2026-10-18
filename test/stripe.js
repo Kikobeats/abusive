@@ -29,10 +29,27 @@ test('narrows the search by domain and keyword', async t => {
   for await (const email of stripeLookup(client)({
     domain: 'acme.com',
     keyword: 'destek'
-  })) { emails.push(email) }
+  })) {
+    emails.push(email)
+  }
   t.deepEqual(emails, ['boss@acme.com', null, 'destek@acme.com'])
   t.deepEqual(client.calls, [
     { query: 'email~"@acme.com" AND email~"destek"', limit: 100 }
+  ])
+})
+
+test('searches when the keyword is exactly 3 characters', async t => {
+  const client = fakeStripe('abc@acme.com')
+  const emails = []
+  for await (const email of stripeLookup(client)({
+    domain: 'acme.com',
+    keyword: 'abc'
+  })) {
+    emails.push(email)
+  }
+  t.deepEqual(emails, ['abc@acme.com'])
+  t.deepEqual(client.calls, [
+    { query: 'email~"@acme.com" AND email~"abc"', limit: 100 }
   ])
 })
 
@@ -42,7 +59,9 @@ test('skips the search when the keyword is too short for Stripe to narrow', asyn
     for await (const email of stripeLookup(client)({
       domain: 'gmail.com',
       keyword
-    })) { t.fail(email) }
+    })) {
+      t.fail(email)
+    }
   }
   t.deepEqual(client.calls, [])
 })
@@ -52,7 +71,9 @@ test('pageSize sets the search page size', async t => {
   for await (const email of stripeLookup(client, { pageSize: 20 })({
     domain: 'acme.com',
     keyword: 'destek'
-  })) { t.fail(email) }
+  })) {
+    t.fail(email)
+  }
   t.deepEqual(client.calls, [
     { query: 'email~"@acme.com" AND email~"destek"', limit: 20 }
   ])
@@ -69,6 +90,18 @@ test('accepts a function that returns the client, called on each lookup', async 
   const { findSibling } = createAbusive({ dataset, lookup })
   t.is(await findSibling('destek6@acme.com'), 'destek@acme.com')
   t.is(resolved, 1)
+})
+
+test('searches a fully dotted address by its collapsed mailbox', async t => {
+  const client = fakeStripe('derek1@gmail.com')
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: stripeLookup(client)
+  })
+  t.is(await findSibling('d.e.r.e.k@gmail.com'), 'derek1@gmail.com')
+  t.deepEqual(client.calls, [
+    { query: 'email~"@gmail.com" AND email~"derek"', limit: 100 }
+  ])
 })
 
 test('finds a Gmail sibling end to end', async t => {

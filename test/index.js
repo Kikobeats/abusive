@@ -14,7 +14,12 @@ const FULLWIDTH_GMAIL = String.fromCodePoint(
 )
 const IDEOGRAPHIC_DOT = String.fromCodePoint(0x3002)
 const FULLWIDTH_DOT = String.fromCodePoint(0xff0e)
+const HALFWIDTH_DOT = String.fromCodePoint(0xff61)
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b)
+const LEFT_TO_RIGHT_MARK = String.fromCodePoint(0x200e)
+const SOFT_HYPHEN = String.fromCodePoint(0xad)
+const VARIATION_SELECTOR = String.fromCodePoint(0xfe0f)
+const VARIATION_SELECTOR_SUPPLEMENT = String.fromCodePoint(0xe0100)
 
 const { isFreeEmail, isFreeEmailDomain, isSibling, parseEmail } = createAbusive(
   { dataset }
@@ -47,6 +52,22 @@ test('parseEmail splits the canonical address at the last @', t => {
     domain: 'gmail.com'
   })
   t.deepEqual(parseEmail(`kiko@gmail${IDEOGRAPHIC_DOT}com`), {
+    local: 'kiko',
+    domain: 'gmail.com'
+  })
+  t.deepEqual(parseEmail(`kiko@gmail${HALFWIDTH_DOT}com`), {
+    local: 'kiko',
+    domain: 'gmail.com'
+  })
+  t.deepEqual(parseEmail(`${LEFT_TO_RIGHT_MARK}kiko@gmail.com`), {
+    local: 'kiko',
+    domain: 'gmail.com'
+  })
+  t.deepEqual(parseEmail(`ki${VARIATION_SELECTOR}ko@gmail.com`), {
+    local: 'kiko',
+    domain: 'gmail.com'
+  })
+  t.deepEqual(parseEmail(`ki${VARIATION_SELECTOR_SUPPLEMENT}ko@gmail.com`), {
     local: 'kiko',
     domain: 'gmail.com'
   })
@@ -96,6 +117,7 @@ test('isFreeEmailDomain matches a provider and its subdomains', t => {
 test('isFreeEmail reads the domain of an address', t => {
   t.true(isFreeEmail('someone@yopmail.com'))
   t.true(isFreeEmail(`someone@yopmail${FULLWIDTH_DOT}com`))
+  t.true(isFreeEmail(`someone@yo${SOFT_HYPHEN}pmail.com`))
   t.true(isFreeEmail('"a@microlink.io"@yopmail.com'))
   t.false(isFreeEmail('kiko@microlink.io'))
   t.false(isFreeEmail('not-an-email'))
@@ -145,7 +167,11 @@ test('isSibling catches same-inbox tricks', t => {
     ['destek+6@acme.com', 'destek@acme.com'],
     ['destek+a@acme.com', 'destek+b@acme.com'],
     ['d.erek7+x@gmail.com', 'derek@gmail.com'],
-    ['destek+6@aramamotorukayit.com', 'destek2@aramamotorukayit.com']
+    ['destek+6@aramamotorukayit.com', 'destek2@aramamotorukayit.com'],
+    ['de_rek@acme.com', 'derek@acme.com'],
+    [`destek${VARIATION_SELECTOR}6@acme.com`, 'destek@acme.com'],
+    [`destek${VARIATION_SELECTOR_SUPPLEMENT}6@acme.com`, 'destek@acme.com'],
+    [`destek${LEFT_TO_RIGHT_MARK}6@acme.com`, 'destek@acme.com']
   ]
   for (const [a, b] of siblings) t.true(isSibling(a, b), `${a} ~ ${b}`)
 })
@@ -194,13 +220,35 @@ test('findSibling passes the canonical domain and a keyword to the lookup', asyn
   await findSibling('derek+promotions@gmail.com')
   await findSibling('42ab@acme.com')
   await findSibling('smithson.derek@gmail.com')
+  await findSibling('d.e.r.e.k@gmail.com')
+  await findSibling('a1b2c@acme.com')
   t.deepEqual(targets, [
     { domain: 'aramamotorukayit.com', keyword: 'destek' },
     { domain: 'gmail.com', keyword: 'smithson' },
     { domain: 'gmail.com', keyword: 'derek' },
     { domain: 'acme.com', keyword: 'ab' },
-    { domain: 'gmail.com', keyword: 'smithson' }
+    { domain: 'gmail.com', keyword: 'smithson' },
+    { domain: 'gmail.com', keyword: 'derek' },
+    { domain: 'acme.com', keyword: 'abc' }
   ])
+})
+
+test('findSibling skips lookup entries that are not strings', async t => {
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: () => [{ email: 'destek@acme.com' }, 42, 'destek@acme.com']
+  })
+  t.is(await findSibling('destek6@acme.com'), 'destek@acme.com')
+})
+
+test('findSibling still matches when format characters hide the mailbox', async t => {
+  const { targets, lookup } = recordingLookup('destek@acme.com')
+  const { findSibling } = createAbusive({ dataset, lookup })
+  t.is(
+    await findSibling(`destek${LEFT_TO_RIGHT_MARK}6@acme.com`),
+    'destek@acme.com'
+  )
+  t.deepEqual(targets, [{ domain: 'acme.com', keyword: 'destek' }])
 })
 
 test('findSibling reads sync, async and promised iterables', async t => {

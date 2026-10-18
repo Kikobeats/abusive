@@ -75,6 +75,7 @@ This catches numbered variants (`derek1`, `derek2`), `+tag` subaddresses and Gma
 |---|---|---|
 | `derek2@gmail.com` | `derek1@gmail.com` | yes |
 | `d.erek7+x@gmail.com` | `derek@gmail.com` | yes |
+| `d.e.r.e.k@gmail.com` | `derek@gmail.com` | yes |
 | `destek6@aramamotorukayit.com` | `destek@aramamotorukayit.com` | yes |
 | `destek+6@acme.com` | `destek@acme.com` | yes |
 | `jane@gmail.com` | `john@gmail.com` | no, different mailbox |
@@ -84,7 +85,7 @@ Domains are compared exactly: `acme.com` and `sub.acme.com` are different, and s
 
 It also matches people who happen to share a name: `john1990@gmail.com` is a sibling of `john@gmail.com`. A mailbox that is empty after the rule, such as `12345@gmail.com`, has no siblings, because unrelated people would all collapse into it.
 
-Before comparing, every address is put in canonical form: Unicode NFKC, invisible characters removed, full-width dots (`。．｡`) read as `.`, trailing dots dropped, and everything lowercased.
+Before comparing, every address is put in canonical form: Unicode NFKC, format characters and variation selectors removed, full-width dots (`。．｡`) read as `.`, trailing dots dropped, and everything lowercased.
 
 ## API
 
@@ -108,7 +109,7 @@ Type: `({ domain: string, keyword: string }) => Iterable<string> | AsyncIterable
 Returns the addresses already registered at `domain`. Required by `findSibling`.
 
 - `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
-- `keyword` is the longest run of letters in the candidate mailbox, like `destek` for `destek6`. Most siblings contain it, so you can use it to narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower.
+- `keyword` is the longest run of letters in the candidate mailbox, like `destek` for `destek6`. When that run is shorter than 3 characters, `keyword` is the mailbox with separators removed, like `derek` for `d.e.r.e.k`. Most siblings contain it, so you can use it to narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower.
 
 Both are safe to put in a query: `lookup` is never called for a malformed address or for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`.
 
@@ -149,7 +150,7 @@ Available on the instance and as `require('abusive').parseEmail`.
 
 ### Stripe
 
-Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). Each lookup searches `email~"@<domain>" AND email~"<keyword>"`. When `keyword` is shorter than the 3 characters Stripe needs, it searches nothing: scanning a whole domain like `gmail.com` takes seconds, so short mailboxes such as `ab1@` are not checked.
+Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). Each lookup searches `email~"@<domain>" AND email~"<keyword>"`. When `keyword` is shorter than the 3 characters Stripe needs, it searches nothing: scanning a whole domain like `gmail.com` takes seconds, so short mailboxes such as `ab1@` are not checked. A dotted address is still checked: `d.e.r.e.k@gmail.com` is searched as `derek`.
 
 ```js
 const Stripe = require('stripe')

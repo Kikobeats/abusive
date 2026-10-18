@@ -1,7 +1,8 @@
 'use strict'
 
-const INVISIBLE_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/g
-const LABEL_DOTS = /[\u3002\uFF0E\uFF61]/g
+const INVISIBLE_CHARACTERS = /[\p{Cf}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu
+// NFKC folds U+FF0E to "." and U+FF61 to U+3002. U+3002 itself is unchanged.
+const LABEL_DOTS = /\u3002/g
 const TRAILING_DOTS = /\.+$/
 const SUBADDRESS = /\+.*$/
 const NUMBERING_AND_SEPARATORS = /[\d._-]/g
@@ -53,10 +54,21 @@ const longestLetterRun = local =>
     .match(LETTER_RUNS)
     .reduce((longest, run) => (run.length > longest.length ? run : longest), '')
 
+// A one- or two-letter run is too broad to search for, and Stripe ignores it.
+// Fall back to the collapsed mailbox so d.e.r.e.k searches for derek.
+const MIN_KEYWORD_LENGTH = 3
+
+const keywordOf = candidate => {
+  const run = longestLetterRun(withoutSubaddress(candidate.local))
+  return run.length >= MIN_KEYWORD_LENGTH ? run : mailboxOf(candidate)
+}
+
 const isSibling = (candidate, existing) => {
   const a = toParts(candidate)
   const b = toParts(existing)
-  if (a == null || b == null || a.domain !== b.domain || a.local === b.local) { return false }
+  if (a == null || b == null || a.domain !== b.domain || a.local === b.local) {
+    return false
+  }
   const mailbox = mailboxOf(a)
   return mailbox !== '' && mailbox === mailboxOf(b)
 }
@@ -68,7 +80,9 @@ const isSearchable = candidate =>
 
 const createAbusive = ({ dataset, lookup, limit = Infinity } = {}) => {
   const freeEmailDomains = toDomainSet(dataset)
-  if (lookup != null && typeof lookup !== 'function') { throw new TypeError('`lookup` must be a function') }
+  if (lookup != null && typeof lookup !== 'function') {
+    throw new TypeError('`lookup` must be a function')
+  }
 
   const isFreeEmailDomain = domain => {
     const labels = canonicalAddress(domain)
@@ -85,20 +99,24 @@ const createAbusive = ({ dataset, lookup, limit = Infinity } = {}) => {
   }
 
   const registeredSibling = async candidate => {
-    const keyword = longestLetterRun(withoutSubaddress(candidate.local))
+    const keyword = keywordOf(candidate)
     let read = 0
     for await (const existing of await lookup({
       domain: candidate.domain,
       keyword
     })) {
       if (read++ >= limit) return null
-      if (typeof existing === 'string' && isSibling(candidate, existing)) { return existing }
+      if (typeof existing === 'string' && isSibling(candidate, existing)) {
+        return existing
+      }
     }
     return null
   }
 
   const findSibling = async email => {
-    if (lookup == null) { throw new TypeError('`lookup` is required to find siblings') }
+    if (lookup == null) {
+      throw new TypeError('`lookup` is required to find siblings')
+    }
     const candidate = parseEmail(email)
     if (candidate === null || !isSearchable(candidate)) return null
     return registeredSibling(candidate)
