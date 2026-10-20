@@ -4,6 +4,7 @@ const test = require('ava').default
 
 const dataset = require('free-email-domains')
 const createAbusive = require('..')
+const pairs = require('./fixtures/pairs')
 
 const FULLWIDTH_GMAIL = String.fromCodePoint(
   0xff27,
@@ -143,37 +144,38 @@ test('createAbusive validates its options', t => {
     instanceOf: TypeError,
     message: /lookup/
   })
+  for (const invalid of [null, -1, 1.5, Number.NaN, '2']) {
+    t.throws(
+      () => createAbusive({ dataset, limit: invalid }),
+      { instanceOf: TypeError, message: /limit/ },
+      String(invalid)
+    )
+  }
+  for (const invalid of [0, -1, 1.5, '2', null]) {
+    t.throws(
+      () => createAbusive({ dataset, minSiblings: invalid }),
+      { instanceOf: TypeError, message: /minSiblings/ },
+      String(invalid)
+    )
+  }
 })
 
-test('isSibling catches numbered variants on any domain', t => {
-  const siblings = [
-    ['derek2@gmail.com', 'derek1@gmail.com'],
-    ['derek3@gmail.com', 'derek@gmail.com'],
-    ['1derek@hotmail.com', 'derek@hotmail.com'],
-    ['destek6@aramamotorukayit.com', 'destek@aramamotorukayit.com'],
-    ['Destek6@AramaMotoruKayit.com', 'destek1@aramamotorukayit.com'],
-    ['de.stek-2@acme.com', 'destek@acme.com'],
-    ['john.doe@acme.com', 'johndoe@acme.com']
-  ]
-  for (const [a, b] of siblings) t.true(isSibling(a, b), `${a} ~ ${b}`)
+test('isSibling catches the same inbox written another way', t => {
+  for (const [a, b] of pairs.sameInbox) t.true(isSibling(a, b), `${a} ~ ${b}`)
 })
 
-test('isSibling catches same-inbox tricks', t => {
-  const siblings = [
-    ['derek+promo@gmail.com', 'derek@gmail.com'],
-    ['d.e.r.e.k@gmail.com', 'derek@gmail.com'],
-    ['D.Erek+x@gmail.com', 'derek@gmail.com'],
-    ['d.erek@googlemail.com', 'derek@googlemail.com'],
-    ['destek+6@acme.com', 'destek@acme.com'],
-    ['destek+a@acme.com', 'destek+b@acme.com'],
-    ['d.erek7+x@gmail.com', 'derek@gmail.com'],
-    ['destek+6@aramamotorukayit.com', 'destek2@aramamotorukayit.com'],
-    ['de_rek@acme.com', 'derek@acme.com'],
-    [`destek${VARIATION_SELECTOR}6@acme.com`, 'destek@acme.com'],
-    [`destek${VARIATION_SELECTOR_SUPPLEMENT}6@acme.com`, 'destek@acme.com'],
-    [`destek${LEFT_TO_RIGHT_MARK}6@acme.com`, 'destek@acme.com']
-  ]
-  for (const [a, b] of siblings) t.true(isSibling(a, b), `${a} ~ ${b}`)
+test('isSibling catches numbered and separated variants', t => {
+  for (const [a, b] of pairs.numbered) t.true(isSibling(a, b), `${a} ~ ${b}`)
+})
+
+test('isSibling ignores format characters hiding a variant', t => {
+  for (const hidden of [
+    VARIATION_SELECTOR,
+    VARIATION_SELECTOR_SUPPLEMENT,
+    LEFT_TO_RIGHT_MARK
+  ]) {
+    t.true(isSibling(`destek${hidden}6@acme.com`, 'destek@acme.com'))
+  }
 })
 
 test('isSibling is also exported without a dataset', t => {
@@ -181,19 +183,7 @@ test('isSibling is also exported without a dataset', t => {
 })
 
 test('isSibling keeps different people, the same address and other domains apart', t => {
-  const strangers = [
-    ['destek1@aramamotorukayit.com', 'destek1@aramamotorukayit.com'],
-    ['DESTEK1@aramamotorukayit.com', 'destek1@aramamotorukayit.com'],
-    ['destek1@other.com', 'destek@aramamotorukayit.com'],
-    ['destek1@sub.aramamotorukayit.com', 'destek@aramamotorukayit.com'],
-    ['derek@googlemail.com', 'derek1@gmail.com'],
-    ['hello@microlink.io', 'joseba@microlink.io'],
-    ['jane@gmail.com', 'john@gmail.com'],
-    ['destekci@acme.com', 'destek@acme.com'],
-    ['123@gmail.com', '456@gmail.com'],
-    ['not-an-email', 'destek@acme.com']
-  ]
-  for (const [a, b] of strangers) t.false(isSibling(a, b), `${a} !~ ${b}`)
+  for (const [a, b] of pairs.strangers) t.false(isSibling(a, b), `${a} !~ ${b}`)
   t.true(
     isSibling(parseEmail('destek6@acme.com'), parseEmail('destek@acme.com'))
   )
@@ -222,16 +212,20 @@ test('findSibling passes the canonical domain and a keyword to the lookup', asyn
   await findSibling('smithson.derek@gmail.com')
   await findSibling('d.e.r.e.k@gmail.com')
   await findSibling('a1b2c@acme.com')
-  await findSibling('abc.def@gmail.com')
+  await findSibling('abc.def@hotmail.com')
   t.deepEqual(targets, [
     { domain: 'aramamotorukayit.com', keyword: 'destek' },
     { domain: 'gmail.com', keyword: 'smithson' },
+    { domain: 'googlemail.com', keyword: 'smithson' },
     { domain: 'gmail.com', keyword: 'derek' },
-    { domain: 'acme.com', keyword: 'ab' },
+    { domain: 'googlemail.com', keyword: 'derek' },
+    { domain: 'acme.com', keyword: '42ab' },
     { domain: 'gmail.com', keyword: 'smithson' },
+    { domain: 'googlemail.com', keyword: 'smithson' },
     { domain: 'gmail.com', keyword: 'derek' },
-    { domain: 'acme.com', keyword: 'abc' },
-    { domain: 'gmail.com', keyword: 'abc' }
+    { domain: 'googlemail.com', keyword: 'derek' },
+    { domain: 'acme.com', keyword: 'a1b2c' },
+    { domain: 'hotmail.com', keyword: 'abc' }
   ])
 })
 
@@ -291,7 +285,8 @@ test('findSibling never looks up what cannot be safely queried or matched', asyn
     'des"tek1@acme.com',
     '"destek1"@acme.com',
     'destek\\1@acme.com',
-    '12345@acme.com',
+    '+promo@acme.com',
+    '.-_@acme.com',
     'not-an-email',
     ''
   ]
@@ -339,4 +334,175 @@ test('findSibling lets a lookup failure reach the caller', async t => {
   await t.throwsAsync(findSibling('destek1@acme.com'), {
     message: 'store down'
   })
+})
+
+test('findSibling looks up both Gmail domains, own domain first', async t => {
+  const registered = {
+    'gmail.com': ['derek@gmail.com'],
+    'googlemail.com': ['jane@googlemail.com']
+  }
+  const targets = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: target => {
+      targets.push(target.domain)
+      return registered[target.domain]
+    }
+  })
+  t.is(await findSibling('d.erek@googlemail.com'), 'derek@gmail.com')
+  t.deepEqual(targets, ['googlemail.com', 'gmail.com'])
+  t.is(await findSibling('derek9@gmail.com'), 'derek@gmail.com')
+})
+
+test('findSibling refuses a numbered variant only after `minSiblings` of them', async t => {
+  const lookup = () => [
+    'derek1@gmail.com',
+    'derek1+x@gmail.com',
+    'derek2@gmail.com',
+    'derek+old@gmail.com'
+  ]
+  const siblingWith = minSiblings =>
+    createAbusive({ dataset, lookup, minSiblings }).findSibling(
+      'derek3@gmail.com'
+    )
+  t.is(await siblingWith(1), 'derek1@gmail.com')
+  t.is(await siblingWith(2), 'derek2@gmail.com')
+  t.is(await siblingWith(3), 'derek+old@gmail.com')
+  t.is(await siblingWith(4), null)
+})
+
+test('findSibling counts each numbered inbox once', async t => {
+  const lookup = () => [
+    'derek1@gmail.com',
+    'd.erek1@gmail.com',
+    'derek1+promo@googlemail.com'
+  ]
+  const { findSibling } = createAbusive({ dataset, lookup, minSiblings: 2 })
+  t.is(await findSibling('derek3@gmail.com'), null)
+})
+
+test('findSibling refuses the same inbox whatever `minSiblings` is', async t => {
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: () => ['derek@gmail.com'],
+    minSiblings: 10
+  })
+  t.is(await findSibling('d.erek+3@gmail.com'), 'derek@gmail.com')
+  t.is(await findSibling('derek3@gmail.com'), null)
+})
+
+test('findSibling reads `minSiblings` per candidate when it is a function', async t => {
+  const seen = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: ({ domain }) => [`destek1@${domain}`],
+    minSiblings: candidate => {
+      seen.push(candidate)
+      return candidate.domain === 'gmail.com' ? 2 : 1
+    }
+  })
+  t.is(await findSibling('destek2@acme.com'), 'destek1@acme.com')
+  t.is(await findSibling('destek2@gmail.com'), null)
+  t.deepEqual(seen, [
+    { local: 'destek2', domain: 'acme.com' },
+    { local: 'destek2', domain: 'gmail.com' }
+  ])
+})
+
+test('findSibling finds the same inbox behind a short or letterless mailbox', async t => {
+  const { targets, lookup } = recordingLookup(
+    'ab1@gmail.com',
+    '12345@gmail.com',
+    '12345@acme.com'
+  )
+  const { findSibling } = createAbusive({ dataset, lookup })
+  t.is(await findSibling('ab1+x@gmail.com'), 'ab1@gmail.com')
+  t.is(await findSibling('1.2.3.4.5@gmail.com'), '12345@gmail.com')
+  t.is(await findSibling('12345+x@acme.com'), '12345@acme.com')
+  t.deepEqual(
+    targets.map(({ keyword }) => keyword),
+    ['ab1', '12345', '12345']
+  )
+})
+
+test('findSibling rejects when a `minSiblings` function returns a bad value', async t => {
+  for (const invalid of [undefined, Number.NaN, Infinity, 0, -1, null, '2']) {
+    const { findSibling } = createAbusive({
+      dataset,
+      lookup: () => ['derek1@acme.com'],
+      minSiblings: () => invalid
+    })
+    await t.throwsAsync(
+      findSibling('derek3@acme.com'),
+      { instanceOf: TypeError, message: /minSiblings/ },
+      String(invalid)
+    )
+  }
+})
+
+test('findSibling skips the second Gmail lookup once `limit` is spent', async t => {
+  const domains = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: ({ domain }) => {
+      domains.push(domain)
+      return ['jane@gmail.com']
+    },
+    limit: 1
+  })
+  t.is(await findSibling('derek+x@gmail.com'), null)
+  t.deepEqual(domains, ['gmail.com'])
+})
+
+test('isSibling reads counters next to any letter', t => {
+  t.true(isSibling('derê1@acme.com', 'derê2@acme.com'))
+  t.false(isSibling('derê1985@acme.com', 'derê@acme.com'))
+})
+
+test('findSibling never pulls more than `limit` addresses from the lookup', async t => {
+  let pulled = 0
+  async function * strangers () {
+    for (const name of ['jane', 'john', 'mary', 'paul', 'anna']) {
+      pulled++
+      yield `${name}@acme.com`
+    }
+  }
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: strangers,
+    limit: 3
+  })
+  t.is(await findSibling('destek1@acme.com'), null)
+  t.is(pulled, 3)
+})
+
+test('findSibling gives a `minSiblings` function a copy of the candidate', async t => {
+  const targets = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: target => {
+      targets.push(target)
+      return []
+    },
+    minSiblings: candidate => {
+      candidate.domain = 'evil" OR 1=1'
+      return 1
+    }
+  })
+  await findSibling('destek1@acme.com')
+  t.deepEqual(targets, [{ domain: 'acme.com', keyword: 'destek' }])
+})
+
+test('findSibling never calls the lookup with a `limit` of 0', async t => {
+  const domains = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: ({ domain }) => {
+      domains.push(domain)
+      return ['derek@gmail.com']
+    },
+    limit: 0
+  })
+  t.is(await findSibling('derek+x@gmail.com'), null)
+  t.deepEqual(domains, [])
 })
