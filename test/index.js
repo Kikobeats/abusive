@@ -440,6 +440,22 @@ test('findSibling rejects when a `minSiblings` function returns a bad value', as
   }
 })
 
+test('findSibling searches the other Gmail domain until `minSiblings` numbered inboxes exist', async t => {
+  const domains = []
+  const { findSibling } = createAbusive({
+    dataset,
+    lookup: ({ domain }) => {
+      domains.push(domain)
+      return domain === 'gmail.com'
+        ? ['derek1@gmail.com']
+        : ['derek2@googlemail.com']
+    },
+    minSiblings: 2
+  })
+  t.is(await findSibling('derek3@gmail.com'), 'derek2@googlemail.com')
+  t.deepEqual(domains, ['gmail.com', 'googlemail.com'])
+})
+
 test('findSibling skips the second Gmail lookup once `limit` is spent', async t => {
   const domains = []
   const { findSibling } = createAbusive({
@@ -457,6 +473,11 @@ test('findSibling skips the second Gmail lookup once `limit` is spent', async t 
 test('isSibling reads counters next to any letter', t => {
   t.true(isSibling('derê1@acme.com', 'derê2@acme.com'))
   t.false(isSibling('derê1985@acme.com', 'derê@acme.com'))
+})
+
+test('isSibling numbers a mailbox of exactly 3 characters and ignores a shorter one', t => {
+  t.true(isSibling('bob1@acme.com', 'bob@acme.com'))
+  t.false(isSibling('bo1@acme.com', 'bo@acme.com'))
 })
 
 test('findSibling never pulls more than `limit` addresses from the lookup', async t => {

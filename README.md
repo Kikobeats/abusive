@@ -156,7 +156,7 @@ Returns the addresses already registered at `domain`.
 
 - `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
 - `keyword` is a fragment most siblings contain, so you can narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower. How it is picked is in [Edge cases](#edge-cases).
-- It is called once per domain sharing the candidate's inbox: once for most domains, and twice for `gmail.com` and `googlemail.com`, starting with the candidate's own domain. The second call is skipped when the first one already finds a sibling.
+- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `minSiblings`) or when `limit` is reached.
 - Both arguments are safe to put in a query: `lookup` is never called for a malformed address, for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`, or for one whose inbox is only separators. `keyword` is never empty.
 - Entries that are not strings are skipped. An error it throws rejects `findSibling`; deciding whether to fail open is up to you.
 
