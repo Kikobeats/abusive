@@ -485,6 +485,11 @@ test('isSibling removes the counter at the end when both ends have one', t => {
   t.false(isSibling('1derek1@acme.com', 'derek1@acme.com'))
 })
 
+test('isSibling ignores an empty inbox', t => {
+  t.false(isSibling('+a@acme.com', '+b@acme.com'))
+  t.false(isSibling('...@gmail.com', '..@googlemail.com'))
+})
+
 test('findSibling never pulls more than `limit` addresses from the lookup', async t => {
   let pulled = 0
   async function * strangers () {
