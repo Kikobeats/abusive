@@ -212,6 +212,7 @@ test('findSibling passes the canonical domain and a keyword to the lookup', asyn
   await findSibling('smithson.derek@gmail.com')
   await findSibling('d.e.r.e.k@gmail.com')
   await findSibling('a1b2c@acme.com')
+  await findSibling('ab.cd1@acme.com')
   await findSibling('abc.def@hotmail.com')
   t.deepEqual(targets, [
     { domain: 'aramamotorukayit.com', keyword: 'destek' },
@@ -225,6 +226,7 @@ test('findSibling passes the canonical domain and a keyword to the lookup', asyn
     { domain: 'gmail.com', keyword: 'derek' },
     { domain: 'googlemail.com', keyword: 'derek' },
     { domain: 'acme.com', keyword: 'a1b2c' },
+    { domain: 'acme.com', keyword: 'abcd' },
     { domain: 'hotmail.com', keyword: 'abc' }
   ])
 })
