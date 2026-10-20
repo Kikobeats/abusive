@@ -480,6 +480,11 @@ test('isSibling numbers a mailbox of exactly 3 characters and ignores a shorter 
   t.false(isSibling('bo1@acme.com', 'bo@acme.com'))
 })
 
+test('isSibling removes the counter at the end when both ends have one', t => {
+  t.true(isSibling('1derek1@acme.com', '1derek2@acme.com'))
+  t.false(isSibling('1derek1@acme.com', 'derek1@acme.com'))
+})
+
 test('findSibling never pulls more than `limit` addresses from the lookup', async t => {
   let pulled = 0
   async function * strangers () {
