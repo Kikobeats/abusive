@@ -6,52 +6,38 @@
 
 > Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, plus free email providers.
 
-Free plans attract people who sign up again and again with addresses like these:
-
 ```
-derek1@gmail.com
-derek2@gmail.com
-d.erek+3@gmail.com
-destek1@acme.com
-destek2@acme.com
+derek@gmail.com      registered
+d.erek+3@gmail.com   refused: same inbox
+derek2@gmail.com     refused: numbered variant
+jane@gmail.com       allowed: different person
+john1987@gmail.com   allowed: a year is not a counter
 ```
 
-**abusive** recognizes each as a **sibling** of an address you already have, so you can refuse the next one without banning the whole domain. Different people still sign up as usual: `jane@acme.com` and `john@acme.com`, or `jane@gmail.com` and `john@gmail.com`.
-
-- Catches numbered variants, `+tag` subaddresses and dotted Gmail addresses with one rule.
+- Refuses the next signup without banning the whole domain.
+- Tells the same inbox written another way apart from numbered variants that may be a different person.
 - Flags free and disposable email providers from the domain list you choose.
-- Works with any user store: your database, Stripe, or anything that can list emails by domain.
+- Works with any user store: Stripe, SQL, or anything that can list emails by domain.
 - Zero dependencies, with TypeScript types included.
 
 ## Install
 
 ```bash
-$ npm install abusive --save
+$ npm install abusive free-email-domains --save
 ```
 
-**abusive** ships no domain list. Bring the one you trust, for example [free-email-domains](https://github.com/Kikobeats/free-email-domains):
+**abusive** ships no domain list. [free-email-domains](https://github.com/Kikobeats/free-email-domains) is one you can use; bring any list you trust.
 
-```bash
-$ npm install free-email-domains --save
-```
-
-## Usage
-
-Compare two addresses, no setup needed:
+## Quick start
 
 ```js
-const { isSibling } = require('abusive')
+const Stripe = require('stripe')
+const stripeLookup = require('abusive/stripe')
 
-isSibling('d.erek+3@gmail.com', 'derek1@gmail.com') // => true
-isSibling('jane@gmail.com', 'john@gmail.com')       // => false
-```
-
-To check a signup, create an instance with a domain list and a `lookup` that returns the addresses you already have at a domain:
-
-```js
 const { findSibling, isFreeEmail } = require('abusive')({
   dataset: require('free-email-domains'),
-  lookup: ({ domain, keyword }) => db.emailsAtDomain(domain, keyword)
+  lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY)),
+  limit: 500
 })
 
 async function signupRejection (email) {
@@ -67,111 +53,64 @@ async function signupRejection (email) {
 
 Keep the refusal message neutral. Saying that a similar account exists tells an attacker which addresses are registered.
 
-Your customers already live in Stripe? Use the built-in [Stripe lookup](#stripe) instead of writing one:
+Customers somewhere else? Swap the `lookup`, see [Lookups](#lookups). To compare two addresses without any setup:
 
 ```js
-const Stripe = require('stripe')
-const stripeLookup = require('abusive/stripe')
+const { isSibling } = require('abusive')
 
-const { findSibling } = require('abusive')({
-  dataset: require('free-email-domains'),
-  lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY)),
-  limit: 500
-})
+isSibling('d.erek+3@gmail.com', 'derek1@gmail.com') // => true
+isSibling('jane@gmail.com', 'john@gmail.com')       // => false
 ```
 
-## How it works
+## What counts as a sibling
 
-Two addresses are **siblings** when they are different addresses at the same domain with the same mailbox. The mailbox is the part before the `@` with any `+tag`, digits, `.`, `_` and `-` removed:
+Two different addresses at the same domain are **siblings** in one of two ways:
 
-| Address | Mailbox |
-|---|---|
-| `derek@gmail.com` | `derek` |
-| `derek2@gmail.com` | `derek` |
-| `d.e.r.e.k+promo@gmail.com` | `derek` |
-| `destek6@acme.com` | `destek` |
-| `john.doe@acme.com` | `johndoe` |
-
-This catches numbered variants (`derek1`, `derek2`), `+tag` subaddresses and Gmail's ignored dots in one rule:
+| Kind | What matches | Same person? |
+|---|---|---|
+| **Same inbox** | The part before the `@` without its `+tag`. Gmail also ignores dots, and `googlemail.com` is the same inbox as `gmail.com`. | Yes, always refused |
+| **Numbered** | The inbox differs only by `.`, `_`, `-` or a counter: one or two digits next to a letter, at the end, or at the start when the end has none. | Maybe, see [minSiblings](#minsiblings) |
 
 | Candidate | Registered | Sibling? |
 |---|---|---|
-| `derek2@gmail.com` | `derek1@gmail.com` | yes |
-| `d.erek7+x@gmail.com` | `derek@gmail.com` | yes |
-| `d.e.r.e.k@gmail.com` | `derek@gmail.com` | yes |
-| `destek6@acme.com` | `destek@acme.com` | yes |
-| `destek+6@acme.com` | `destek@acme.com` | yes |
+| `derek+promo@gmail.com` | `derek@gmail.com` | yes, same inbox |
+| `d.e.r.e.k@gmail.com` | `derek@gmail.com` | yes, same inbox |
+| `d.erek@googlemail.com` | `derek@gmail.com` | yes, same inbox |
+| `destek+6@acme.com` | `destek@acme.com` | yes, same inbox |
+| `derek2@gmail.com` | `derek1@gmail.com` | yes, numbered |
+| `destek6@acme.com` | `destek@acme.com` | yes, numbered |
+| `john.doe@acme.com` | `johndoe@acme.com` | yes, numbered |
+| `john1987@gmail.com` | `john@gmail.com` | no, a year is not a counter |
+| `derek1985@gmail.com` | `derek2001@gmail.com` | no |
+| `jo2@gmail.com` | `jo@gmail.com` | no, mailbox shorter than 3 characters |
 | `jane@gmail.com` | `john@gmail.com` | no, different mailbox |
 | `destek1@sub.acme.com` | `destek@acme.com` | no, different domain |
 
-Domains are compared exactly: `acme.com` and `sub.acme.com` are different, and so are `gmail.com` and `googlemail.com`.
+A numbered address is a different inbox, so it can belong to a different person: `derek84@gmail.com` and `derek@gmail.com` may be two Dereks. On a large provider, set [minSiblings](#minsiblings) to `2`: `derek3@` is refused once `derek1@` and `derek2@` exist, while a single `derek@` lets `derek84@` in.
 
-It also matches people who happen to share a name: `john1990@gmail.com` is a sibling of `john@gmail.com`. A mailbox that is empty after the rule, such as `12345@gmail.com`, has no siblings, because unrelated people would all collapse into it.
-
-Before comparing, every address is put in canonical form: Unicode NFKC, format characters and variation selectors removed, full-width dots (`。．｡`) read as `.`, trailing dots dropped, and everything lowercased.
-
-## API
-
-### abusive(options)
-
-Returns an object with the methods below. Create it once and reuse it: the dataset is indexed when the object is created.
-
-#### options
-
-##### dataset
-
-*Required*<br>
-Type: `Iterable<string>`
-
-The free and disposable email provider domains used by `isFreeEmail`, for example `require('free-email-domains')`. Domains are compared case-insensitively.
-
-##### lookup
-
-Type: `({ domain: string, keyword: string }) => Iterable<string> | AsyncIterable<string> | Promise<Iterable<string>>`
-
-Returns the addresses already registered at `domain`. Required by `findSibling`.
-
-- `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
-- `keyword` is the longest run of letters in the candidate mailbox, like `destek` for `destek6`. When that run is shorter than 3 characters, `keyword` is the mailbox with separators removed, like `derek` for `d.e.r.e.k`. Most siblings contain it, so you can use it to narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower.
-
-Both are safe to put in a query: `lookup` is never called for a malformed address or for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`.
-
-Entries that are not strings are skipped. An error it throws rejects `findSibling`; deciding whether to fail open is up to you.
-
-##### limit
-
-Type: `number`<br>
-Default: `Infinity`
-
-The maximum number of addresses `findSibling` reads from `lookup` before giving up. It bounds the work on domains with many registered users.
-
-### .findSibling(email)
-
-Returns a `Promise` that resolves to the first registered address that is a sibling of `email`, or `null`.
-
-### .isSibling(candidate, existing)
-
-Returns `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`.
-
-Available on the instance and as `require('abusive').isSibling`.
-
-### .isFreeEmail(email)
-
-Returns `true` when the address is hosted by a provider in `dataset`.
-
-### .isFreeEmailDomain(domain)
-
-Returns `true` when the domain, or any parent of it, is in `dataset`.
-
-### parseEmail(email)
-
-Returns `{ local, domain }` in canonical form, split at the last `@`, or `null` when the address is malformed.
-
-Available on the instance and as `require('abusive').parseEmail`.
+The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
 ## Lookups
 
-A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. See [lookup](#lookup) for the full contract.
+A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. The full contract is in [lookup](#lookup).
+
+### Stripe
+
+Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). Setup is in [Quick start](#quick-start).
+
+Each lookup searches `email~"@<domain>" AND email~"<keyword>"`. When `keyword` is shorter than the 3 characters Stripe needs, it searches nothing, because scanning a whole domain like `gmail.com` takes seconds. So mailboxes such as `ab+x@` are not checked. A dotted address is still checked: `d.e.r.e.k@gmail.com` is searched as `derek`.
+
+Limits of Stripe search:
+
+- It can take about a minute to see a new customer, so two signups seconds apart can both pass.
+- A registered address that splits the keyword, like `d.erek@gmail.com` for the keyword `derek`, is not found.
+
+#### stripeLookup(client, [options])
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `client` | `Stripe \| () => Stripe` | *required* | A Stripe client, or a function returning one. The function is called on every lookup, so the client can be created lazily. |
+| `options.pageSize` | `number` | `100` | Customers per search request. Pair it with `limit` to bound how many customers are read in total. |
 
 ### SQL
 
@@ -192,31 +131,79 @@ const sqlLookup = async ({ domain, keyword }) => {
 
 `lower()` matters because `domain` and `keyword` arrive lowercased while your stored addresses may not be. Drop the `keyword` condition to also catch registered addresses that split it, like `d.erek@gmail.com`, at the cost of reading every address at the domain.
 
-### Stripe
+## API
 
-Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). The setup is shown in [Usage](#usage).
+### abusive(options)
 
-Each lookup searches `email~"@<domain>" AND email~"<keyword>"`. When `keyword` is shorter than the 3 characters Stripe needs, it searches nothing: scanning a whole domain like `gmail.com` takes seconds, so short mailboxes such as `ab1@` are not checked. A dotted address is still checked: `d.e.r.e.k@gmail.com` is searched as `derek`.
+Returns an object with the methods below. Create it once and reuse it: the dataset is indexed when the object is created.
 
-#### stripeLookup(client, [options])
+| Option | Type | Default | Description |
+|---|---|---|---|
+| [`dataset`](#dataset) | `Iterable<string>` | *required* | Free and disposable email provider domains. |
+| [`lookup`](#lookup) | `function` | | Returns the registered addresses at a domain. Required by `findSibling`. |
+| [`limit`](#limit) | `number` | `Infinity` | Maximum addresses read per `findSibling` call. |
+| [`minSiblings`](#minsiblings) | `number \| function` | `1` | Numbered siblings needed before one is reported. |
 
-##### client
+#### dataset
 
-*Required*<br>
-Type: `Stripe | () => Stripe`
+The domains used by `isFreeEmail`, for example `require('free-email-domains')`. Domains are compared case-insensitively.
 
-A Stripe client, or a function that returns one. The function is called on every lookup, so the client can be created lazily.
+#### lookup
 
-##### options
+Type: `({ domain: string, keyword: string }) => Iterable<string> | AsyncIterable<string> | Promise<Iterable<string>>`
 
-###### pageSize
+Returns the addresses already registered at `domain`.
 
-Type: `number`<br>
-Default: `100`
+- `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
+- `keyword` is a fragment most siblings contain, so you can narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower. How it is picked is in [Edge cases](#edge-cases).
+- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `minSiblings`) or when `limit` is reached.
+- Both arguments are safe to put in a query: `lookup` is never called for a malformed address, for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`, or for one whose inbox is only separators. `keyword` is never empty.
+- Entries that are not strings are skipped. An error it throws rejects `findSibling`; deciding whether to fail open is up to you.
 
-How many customers each search request returns. Pair it with `limit` to bound how many customers are read in total.
+#### limit
 
-Stripe search can take about a minute to see a new customer, so two signups seconds apart can both pass. A registered address that splits the keyword, like `d.erek@gmail.com` for the keyword `derek`, is not found by the search.
+The maximum number of addresses `findSibling` reads from `lookup` before giving up, across every call. It bounds the work on domains with many registered users. Once it is reached, no more entries or pages are requested. It must be a non-negative integer or `Infinity`, or a `TypeError` is thrown.
+
+#### minSiblings
+
+Type: `number | (candidate: { local: string, domain: string }) => number`
+
+How many distinct numbered siblings must exist before `findSibling` reports one. A same-inbox sibling is reported regardless. Addresses that reach one inbox, like `derek1@` and `d.erek1+x@`, count once.
+
+Pass a function to choose per candidate, for example strict on work domains and lenient on Gmail:
+
+```js
+const { findSibling } = require('abusive')({
+  dataset: require('free-email-domains'),
+  lookup,
+  minSiblings: ({ domain }) =>
+    ['gmail.com', 'googlemail.com'].includes(domain) ? 2 : 1
+})
+```
+
+It must be a positive integer: an invalid value throws a `TypeError`, and an invalid value returned by the function rejects `findSibling` with one.
+
+### Methods
+
+| Method | Returns |
+|---|---|
+| `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `minSiblings`), or `null`. |
+| `.isSibling(candidate, existing)` | `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`. |
+| `.isFreeEmail(email)` | `true` when the address is hosted by a provider in `dataset`. |
+| `.isFreeEmailDomain(domain)` | `true` when the domain, or any parent of it, is in `dataset`. |
+| `.parseEmail(email)` | `{ local, domain }` in canonical form, split at the last `@`, or `null` when the address is malformed. |
+
+`isSibling` and `parseEmail` are also available without an instance, as `require('abusive').isSibling` and `require('abusive').parseEmail`.
+
+## Edge cases
+
+**Canonical form.** Before comparing, every address gets Unicode NFKC, format characters and variation selectors removed, full-width dots (`。．｡`) read as `.`, trailing dots dropped, and everything lowercased.
+
+**Domains** are compared exactly, except for the two Gmail domains: `acme.com` and `sub.acme.com` are different.
+
+**Numbered matches need a real mailbox.** A mailbox shorter than 3 characters or without letters, such as `jo@` or `12345@`, has no numbered siblings, but its same-inbox variants like `12345+x@` are still caught. Only one counter is removed, so `1derek1@` is not a sibling of `derek@`.
+
+**Keyword.** It is the longest run of letters before the `+`, like `destek` for `destek6`. When that run is shorter than 3 characters, it is the mailbox, like `derek` for `d.e.r.e.k`, or the inbox without separators when the mailbox is shorter than 3 characters, like `ab1` for `ab1+x`. A registered address that splits the keyword with separators, like `d.e.r.e.k@acme.com` for the keyword `derek`, is only found by a lookup that ignores the keyword.
 
 ## License
 

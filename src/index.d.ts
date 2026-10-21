@@ -17,6 +17,7 @@ export interface AbusiveOptions {
   dataset: Iterable<string>
   lookup?: Lookup
   limit?: number
+  minSiblings?: number | ((candidate: EmailParts) => number)
 }
 
 export interface Abusive {
