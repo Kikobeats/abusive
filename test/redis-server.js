@@ -32,9 +32,12 @@ const signupsOn = (options = {}) => {
 }
 
 test.after.always(async () => {
-  const keys = await keysOf(prefix)
-  if (keys.length > 0) await client.del(keys)
-  client.disconnect()
+  try {
+    const keys = await keysOf(prefix)
+    if (keys.length > 0) await client.del(keys)
+  } finally {
+    client.disconnect()
+  }
 })
 
 test('simultaneous signups from one IP give one winner, every round', async t => {
