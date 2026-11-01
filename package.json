@@ -62,6 +62,7 @@
     "free-email-domains": "latest",
     "git-authors-cli": "latest",
     "github-generate-release": "latest",
+    "ioredis": "latest",
     "nano-staged": "latest",
     "simple-git-hooks": "latest",
     "standard": "latest",
