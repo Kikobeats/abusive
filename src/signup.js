@@ -13,7 +13,6 @@ const BLOCKED_DOMAIN = 'blocked-domain'
 const DOMAIN_BURST = 'domain-burst'
 const SAME_IP = 'same-ip'
 const SAME_INBOX = 'same-inbox'
-const MALFORMED = 'malformed'
 
 const never = () => false
 
@@ -45,7 +44,6 @@ const parentsOf = domain => {
 }
 
 const createSignupScreen = ({
-  candidateOf,
   isAlwaysShared,
   store,
   secret,
@@ -126,10 +124,7 @@ const createSignupScreen = ({
     return { isShared, isTrusted }
   }
 
-  const checkSignup = async email => {
-    const candidate = candidateOf(email)
-    if (candidate === null) return { reason: MALFORMED }
-    const { domain } = candidate
+  const checkSignup = async ({ domain }) => {
     const { isTrusted } = judgeOf(domain)
     return (await isRefusedByBlock(domain, isTrusted))
       ? { reason: BLOCKED_DOMAIN }
@@ -171,15 +166,10 @@ const createSignupScreen = ({
     }
   }
 
-  const admitSignup = async (email, context) => {
-    const candidate = candidateOf(email)
-    if (candidate === null) return { reason: MALFORMED }
+  const admitSignup = async (candidate, ip) => {
     const { identity, spelling, domain } = candidate
     const judge = judgeOf(domain)
     await judge.isShared()
-    if (await isRefusedByBlock(domain, judge.isTrusted)) {
-      return { reason: BLOCKED_DOMAIN }
-    }
     const spelled = hash(spelling)
     const marker = admittedKey(identity)
     const admittedAs = await store.read(marker)
@@ -189,7 +179,7 @@ const createSignupScreen = ({
     const winner = await store.claim(marker, spelled, ipMemoryMs)
     if (winner !== spelled) return { reason: SAME_INBOX }
     try {
-      const refusal = await admitNewInbox(candidate, ipKey(context?.ip), judge)
+      const refusal = await admitNewInbox(candidate, ipKey(ip), judge)
       if (refusal !== null) await store.remove(marker)
       return refusal
     } catch (error) {

@@ -194,6 +194,16 @@ const signupCandidateOf = email => {
   }
 }
 
+const SIBLING = 'sibling'
+const MALFORMED = 'malformed'
+const noop = () => {}
+
+const notifyQuietly = (hook, details) => {
+  try {
+    Promise.resolve(hook(details)).catch(noop)
+  } catch {}
+}
+
 const assertMinSiblings = value => {
   if (!Number.isInteger(value) || value < 1) {
     throw new TypeError(
@@ -223,7 +233,10 @@ const createAbusive = ({
   lookup,
   limit = Infinity,
   minSiblings = 1,
-  signup
+  onAbusive = noop,
+  onError = noop,
+  store,
+  ...signup
 } = {}) => {
   const freeEmailDomains = toDomainSet(dataset)
   if (lookup != null && typeof lookup !== 'function') {
@@ -279,21 +292,62 @@ const createAbusive = ({
     return registeredSibling(candidate)
   }
 
-  const signupScreen =
-    signup &&
-    createSignupScreen({
-      ...signup,
-      candidateOf: signupCandidateOf,
-      isAlwaysShared: domain => isGmail(domain) || freeEmailDomains.has(domain)
+  for (const [name, hook] of Object.entries({ onAbusive, onError })) {
+    if (typeof hook !== 'function') {
+      throw new TypeError(`\`${name}\` must be a function`)
+    }
+  }
+
+  const screen =
+    store == null
+      ? null
+      : createSignupScreen({
+        ...signup,
+        store,
+        isAlwaysShared: domain =>
+          isGmail(domain) || freeEmailDomains.has(domain)
+      })
+
+  const refusalOf = async ({ email, ip, verified }) => {
+    const candidate = signupCandidateOf(email)
+    if (candidate === null) return { reason: MALFORMED }
+    const attempt = async rule => {
+      try {
+        return await rule()
+      } catch (error) {
+        notifyQuietly(onError, { email, error })
+        return null
+      }
+    }
+    const refusal =
+      screen && (await attempt(() => screen.checkSignup(candidate)))
+    if (refusal) return refusal
+    if (lookup != null && (await attempt(() => findSibling(email)))) {
+      return { reason: SIBLING }
+    }
+    return verified === true && screen
+      ? attempt(() => screen.admitSignup(candidate, ip))
+      : null
+  }
+
+  const isAbusive = async ({ email, ip, verified = false } = {}) => {
+    const refusal = await refusalOf({ email, ip, verified })
+    if (refusal === null) return false
+    notifyQuietly(onAbusive, {
+      email,
+      domain: typeof email === 'string' ? parseEmail(email)?.domain : undefined,
+      reason: refusal.reason
     })
+    return true
+  }
 
   return {
     findSibling,
+    isAbusive,
     isFreeEmail,
     isFreeEmailDomain,
     isSibling,
-    parseEmail,
-    ...signupScreen
+    parseEmail
   }
 }
 

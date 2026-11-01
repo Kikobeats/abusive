@@ -36,14 +36,30 @@ const memoryStore = () => {
   }
 }
 
-const screen = (signup = {}) => {
-  const store = signup.store ?? memoryStore()
+const screen = ({ dataset: domains = dataset, ...options } = {}) => {
+  const store = options.store ?? memoryStore()
+  const reasons = new Map()
+  const errors = new Map()
+  const { isAbusive } = createAbusive({
+    dataset: domains,
+    secret: 'secret',
+    ...options,
+    store,
+    onAbusive: ({ email, reason }) => reasons.set(email, reason),
+    onError: ({ email, error }) => errors.set(email, error)
+  })
+  const run = async (email, check) => {
+    reasons.delete(email)
+    errors.delete(email)
+    const abusive = await isAbusive({ email, ...check })
+    if (errors.has(email)) throw errors.get(email)
+    return abusive ? { reason: reasons.get(email) } : null
+  }
   return {
     store,
-    ...createAbusive({
-      dataset,
-      signup: { store, secret: 'secret', ...signup }
-    })
+    admitSignup: (email, context) =>
+      run(email, { ip: context?.ip, verified: true }),
+    checkSignup: email => run(email, {})
   }
 }
 
@@ -201,9 +217,114 @@ test('a store failure rejects, so the caller decides', async t => {
   await t.throwsAsync(admitSignup('a@acme.com'), { message: 'redis down' })
 })
 
-test('signup methods are absent without the option', t => {
-  const abusive = createAbusive({ dataset })
-  t.is(abusive.admitSignup, undefined)
+test('isAbusive without a store only looks for siblings', async t => {
+  const lookup = async function * () {
+    yield 'destek@acme.com'
+  }
+  const { isAbusive } = createAbusive({ dataset, lookup })
+  t.true(await isAbusive({ email: 'destek6@acme.com', verified: true }))
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
+  t.false(await isAbusive({ email: 'other@acme.com', ip: IP, verified: true }))
+})
+
+test('isAbusive with neither store nor lookup still refuses malformed input', async t => {
+  const { isAbusive } = createAbusive({ dataset })
+  t.true(await isAbusive({ email: 'nope' }))
+  t.true(await isAbusive())
+  t.false(await isAbusive({ email: 'jane@acme.com' }))
+})
+
+test('isAbusive reads by default and only writes when verified', async t => {
+  const store = memoryStore()
+  const { isAbusive } = createAbusive({ dataset, store, secret: 's' })
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP }))
+  t.is(store.values.size, 0)
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP, verified: 'yes' }))
+  t.is(store.values.size, 0)
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP, verified: true }))
+  t.true(store.values.size > 0)
+  t.false(await isAbusive({ email: 'b@other.com', ip: IP }))
+  t.true(await isAbusive({ email: 'b@other.com', ip: IP, verified: true }))
+})
+
+test('a sibling is refused before it can take an IP', async t => {
+  const store = memoryStore()
+  const lookup = async function * () {
+    yield 'destek@acme.com'
+  }
+  const { isAbusive } = createAbusive({ dataset, lookup, store, secret: 's' })
+  t.true(await isAbusive({ email: 'destek6@acme.com', ip: IP, verified: true }))
+  t.is(store.values.size, 0)
+})
+
+test('isAbusive never rejects: a failed check is not abusive and is reported', async t => {
+  const store = memoryStore()
+  store.read = async () => {
+    throw new Error('redis down')
+  }
+  const reported = []
+  const lookup = async () => {
+    throw new Error('stripe down')
+  }
+  const { isAbusive } = createAbusive({
+    dataset,
+    lookup,
+    store,
+    secret: 's',
+    onError: ({ error }) => reported.push(error.message)
+  })
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
+  t.deepEqual(reported, ['redis down', 'stripe down', 'redis down'])
+})
+
+test('one failed check does not skip the next', async t => {
+  const lookup = async () => {
+    throw new Error('stripe down')
+  }
+  const { isAbusive } = createAbusive({
+    dataset,
+    lookup,
+    store: memoryStore(),
+    secret: 's'
+  })
+  await isAbusive({ email: 'a@acme.com', ip: IP, verified: true })
+  t.true(await isAbusive({ email: 'b@other.com', ip: IP, verified: true }))
+})
+
+test('hooks report why, and a failing hook changes nothing', async t => {
+  const seen = []
+  const { isAbusive } = createAbusive({
+    dataset,
+    onAbusive: details => seen.push(details)
+  })
+  t.true(await isAbusive({ email: 'nope' }))
+  t.deepEqual(seen, [{ email: 'nope', domain: undefined, reason: 'malformed' }])
+  t.true(await isAbusive({ email: 'a b@acme.com' }))
+  t.is(seen[1].domain, 'acme.com')
+  t.true(await isAbusive({ email: 7 }))
+  for (const onAbusive of [
+    () => {
+      throw new Error('boom')
+    },
+    async () => {
+      throw new Error('boom')
+    }
+  ]) {
+    t.true(
+      await createAbusive({ dataset, onAbusive }).isAbusive({ email: 'nope' })
+    )
+  }
+  const onError = () => {
+    throw new Error('boom')
+  }
+  const lookup = async () => {
+    throw new Error('down')
+  }
+  t.false(
+    await createAbusive({ dataset, lookup, onError }).isAbusive({
+      email: 'a@acme.com'
+    })
+  )
 })
 
 test('an oversized domain sends nothing to the store', async t => {
@@ -238,11 +359,7 @@ test('a free provider can never be blocked by a burst', async t => {
 })
 
 test('Gmail stays shared even if the dataset leaves it out', async t => {
-  const store = memoryStore()
-  const { admitSignup } = createAbusive({
-    dataset: [],
-    signup: { store, secret: 's', burstLimit: 1 }
-  })
+  const { admitSignup } = screen({ dataset: [], burstLimit: 1 })
   t.is(await admitSignup('a@gmail.com'), null)
   t.is(await admitSignup('b@googlemail.com'), null)
 })
@@ -441,10 +558,7 @@ test('trust never applies to a shared domain', async t => {
 })
 
 test('subdomains of a dataset domain still have the burst rule', async t => {
-  const { admitSignup } = createAbusive({
-    dataset: ['mooo.com'],
-    signup: { store: memoryStore(), secret: 's', burstLimit: 2 }
-  })
+  const { admitSignup } = screen({ dataset: ['mooo.com'], burstLimit: 2 })
   t.is(await admitSignup('a@mooo.com'), null)
   t.is(await admitSignup('b@mooo.com'), null)
   t.is(await admitSignup('a@attacker.mooo.com'), null)
@@ -644,10 +758,7 @@ test('internationalised mailboxes and domains are allowed', async t => {
 })
 
 test('an internationalised provider in the dataset is one provider', async t => {
-  const { admitSignup } = createAbusive({
-    dataset: ['почта.рф'],
-    signup: { store: memoryStore(), secret: 's', burstLimit: 1 }
-  })
+  const { admitSignup } = screen({ dataset: ['почта.рф'], burstLimit: 1 })
   t.is(await admitSignup('a@почта.рф'), null)
 })
 
@@ -703,53 +814,26 @@ test('checkSignup cannot tell who is registered or trusted', async t => {
   }
 })
 
-test('invalid signup options throw', t => {
-  const options = signup => () =>
-    createAbusive({
-      dataset,
-      signup: { store: memoryStore(), secret: 's', ...signup }
-    })
-  t.throws(options({ store: {} }), { instanceOf: TypeError, message: /store/ })
-  t.throws(options({ store: null }), {
-    instanceOf: TypeError,
-    message: /store/
-  })
-  t.throws(options({ secret: '' }), {
-    instanceOf: TypeError,
-    message: /secret/
-  })
-  t.throws(options({ burstLimit: 0 }), {
-    instanceOf: TypeError,
-    message: /burstLimit/
-  })
-  t.throws(options({ ipMemoryMs: 1.5 }), {
-    instanceOf: TypeError,
-    message: /ipMemoryMs/
-  })
-  t.throws(options({ burstWindowMs: -1 }), {
-    instanceOf: TypeError,
-    message: /burstWindowMs/
-  })
-  t.throws(options({ ipMemoryMs: 1e30 }), {
-    instanceOf: TypeError,
-    message: /ipMemoryMs/
-  })
-  t.throws(options({ burstBlockMs: 0 }), {
-    instanceOf: TypeError,
-    message: /burstBlockMs/
-  })
-  t.throws(options({ onBlock: 1 }), {
-    instanceOf: TypeError,
-    message: /onBlock/
-  })
-  t.throws(options({ isTrustedDomain: null }), {
-    instanceOf: TypeError,
-    message: /isTrustedDomain/
-  })
-  t.throws(options({ isSharedDomain: 'gmail.com' }), {
-    instanceOf: TypeError,
-    message: /isSharedDomain/
-  })
+test('invalid options throw', t => {
+  const options = extra => () =>
+    createAbusive({ dataset, store: memoryStore(), secret: 's', ...extra })
+  for (const [extra, message] of [
+    [{ onAbusive: 1 }, /onAbusive/],
+    [{ onError: 1 }, /onError/],
+    [{ store: {} }, /store/],
+    [{ secret: '' }, /secret/],
+    [{ secret: undefined }, /secret/],
+    [{ burstLimit: 0 }, /burstLimit/],
+    [{ ipMemoryMs: 1.5 }, /ipMemoryMs/],
+    [{ ipMemoryMs: 1e30 }, /ipMemoryMs/],
+    [{ burstWindowMs: -1 }, /burstWindowMs/],
+    [{ burstBlockMs: 0 }, /burstBlockMs/],
+    [{ onBlock: 1 }, /onBlock/],
+    [{ isTrustedDomain: null }, /isTrustedDomain/],
+    [{ isSharedDomain: 'gmail.com' }, /isSharedDomain/]
+  ]) {
+    t.throws(options(extra), { instanceOf: TypeError, message })
+  }
 })
 
 const networks = [
