@@ -20,6 +20,7 @@ const HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
 // Below this, a numbered mailbox like jo2 is shared by too many people.
 const MIN_MAILBOX_LENGTH = 3
 const MAX_ADDRESS_LENGTH = 320
+const SINGLE_ADDRESS = /^[^\s@]+@[^\s@]+$/
 const SIBLING = 'sibling'
 const IP = 'ip'
 const noop = () => {}
@@ -165,14 +166,15 @@ const toMinSiblings = min => {
 
 const createAbusive = ({
   rejectedDomains = [],
-  sibling: { lookup, min = 1 } = {},
+  sibling,
   ip,
   secret,
   onAbusive = noop,
   onError = noop
 } = {}) => {
   const rejected = toDomainSet(rejectedDomains)
-  if (lookup != null && typeof lookup !== 'function') {
+  const { lookup, min = 1 } = sibling ?? {}
+  if (sibling != null && typeof lookup !== 'function') {
     throw new TypeError('`sibling.lookup` must be a function')
   }
   const siblingsRequired = toMinSiblings(min)
@@ -238,6 +240,7 @@ const createAbusive = ({
     }
     if (verified !== true || ipRule === null) return null
     const address = `${parts.local}@${parts.domain}`
+    if (!SINGLE_ADDRESS.test(address)) return null
     return (await attempt(() => ipRule.isIpUsedByAnother(address, ip)))
       ? IP
       : null

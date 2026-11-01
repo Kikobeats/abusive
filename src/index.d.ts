@@ -26,7 +26,7 @@ export interface AbusiveCheck {
 }
 
 export interface SiblingOptions {
-  lookup?: Lookup
+  lookup: Lookup
   min?: number | ((candidate: EmailParts) => number)
 }
 

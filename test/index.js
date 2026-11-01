@@ -146,7 +146,7 @@ test('createAbusive validates its options', t => {
   })
   for (const invalid of [0, -1, 1.5, '2', null]) {
     t.throws(
-      () => createAbusive({ sibling: { min: invalid } }),
+      () => createAbusive({ sibling: { lookup: () => [], min: invalid } }),
       { instanceOf: TypeError, message: /sibling\.min/ },
       String(invalid)
     )
@@ -344,7 +344,7 @@ test('findSibling looks up both Gmail domains, own domain first', async t => {
   t.is(await findSibling('derek9@gmail.com'), 'derek@gmail.com')
 })
 
-test('findSibling refuses a numbered variant only after `minSiblings` of them', async t => {
+test('findSibling refuses a numbered variant only after `sibling.min` of them', async t => {
   const lookup = () => [
     'derek1@gmail.com',
     'derek1+x@gmail.com',
@@ -375,7 +375,7 @@ test('findSibling counts each numbered inbox once', async t => {
   t.is(await findSibling('derek3@gmail.com'), null)
 })
 
-test('findSibling refuses the same inbox whatever `minSiblings` is', async t => {
+test('findSibling refuses the same inbox whatever `sibling.min` is', async t => {
   const { findSibling } = createAbusive({
     rejectedDomains: dataset,
     sibling: { lookup: () => ['derek@gmail.com'], min: 10 }
@@ -384,7 +384,7 @@ test('findSibling refuses the same inbox whatever `minSiblings` is', async t => 
   t.is(await findSibling('derek3@gmail.com'), null)
 })
 
-test('findSibling reads `minSiblings` per candidate when it is a function', async t => {
+test('findSibling reads `sibling.min` per candidate when it is a function', async t => {
   const seen = []
   const { findSibling } = createAbusive({
     rejectedDomains: dataset,
@@ -423,7 +423,7 @@ test('findSibling finds the same inbox behind a short or letterless mailbox', as
   )
 })
 
-test('findSibling rejects when a `minSiblings` function returns a bad value', async t => {
+test('findSibling rejects when a `sibling.min` function returns a bad value', async t => {
   for (const invalid of [undefined, Number.NaN, Infinity, 0, -1, null, '2']) {
     const { findSibling } = createAbusive({
       rejectedDomains: dataset,
@@ -437,7 +437,7 @@ test('findSibling rejects when a `minSiblings` function returns a bad value', as
   }
 })
 
-test('findSibling searches the other Gmail domain until `minSiblings` numbered inboxes exist', async t => {
+test('findSibling searches the other Gmail domain until `sibling.min` numbered inboxes exist', async t => {
   const domains = []
   const { findSibling } = createAbusive({
     rejectedDomains: dataset,
@@ -475,7 +475,7 @@ test('isSibling ignores an empty inbox', t => {
   t.false(isSibling('...@gmail.com', '..@googlemail.com'))
 })
 
-test('findSibling gives a `minSiblings` function a copy of the candidate', async t => {
+test('findSibling gives a `sibling.min` function a copy of the candidate', async t => {
   const targets = []
   const { findSibling } = createAbusive({
     rejectedDomains: dataset,

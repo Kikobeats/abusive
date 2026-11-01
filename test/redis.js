@@ -94,4 +94,45 @@ test('timeoutMs does not get in the way of a working Redis', async t => {
 
 test('a client is required', t => {
   t.throws(() => redisStore(), { instanceOf: TypeError })
+  t.throws(() => redisStore(null), { instanceOf: TypeError })
+})
+
+const NOT_MILLISECONDS = [null, 0, -1, 1.5, NaN, Infinity, '1000']
+
+test('a timeoutMs that setTimeout would turn into 1ms throws', t => {
+  for (const timeoutMs of [...NOT_MILLISECONDS, 2 ** 31]) {
+    t.throws(() => redisStore(fakeRedis(), { timeoutMs }), {
+      instanceOf: TypeError,
+      message: /timeoutMs/
+    })
+  }
+})
+
+test('the longest timeoutMs and the shortest still claim', async t => {
+  for (const timeoutMs of [2 ** 31 - 1, 1]) {
+    const store = redisStore(fakeRedis(), { timeoutMs })
+    t.is(await store.claim('k', 'v'), 'v')
+  }
+})
+
+test('an explicit undefined timeoutMs and ttlMs mean their defaults', async t => {
+  const client = fakeRedis()
+  const store = redisStore(client, { timeoutMs: undefined, ttlMs: undefined })
+  await store.claim('k', 'v')
+  t.is(client.calls[0][4], 30 * 24 * 60 * 60 * 1000)
+})
+
+test('a ttlMs Redis would refuse throws', t => {
+  for (const ttlMs of [...NOT_MILLISECONDS, 2 ** 53]) {
+    t.throws(() => redisStore(fakeRedis(), { ttlMs }), {
+      instanceOf: TypeError,
+      message: /ttlMs/
+    })
+  }
+})
+
+test('the shortest ttlMs still claims', async t => {
+  const client = fakeRedis()
+  await redisStore(client, { ttlMs: 1 }).claim('k', 'v')
+  t.is(client.calls[0][4], 1)
 })

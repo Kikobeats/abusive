@@ -3,6 +3,14 @@
 const DEFAULT_PREFIX = 'abusive:'
 const CLAIM_ATTEMPTS = 5
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000
+// setTimeout turns anything else into a 1ms timer, failing every check.
+const MAX_TIMEOUT_MS = 2 ** 31 - 1
+
+const assertMilliseconds = (name, value, max) => {
+  if (!Number.isInteger(value) || value < 1 || value > max) {
+    throw new TypeError(`\`${name}\` must be an integer from 1 to ${max}`)
+  }
+}
 
 const withinTimeout = async (timeoutMs, work) => {
   if (timeoutMs === undefined) return work()
@@ -29,6 +37,10 @@ const redisStore = (
       '`client` must be a Redis client or a function returning one'
     )
   }
+  if (timeoutMs !== undefined) {
+    assertMilliseconds('timeoutMs', timeoutMs, MAX_TIMEOUT_MS)
+  }
+  assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
   const claim = async (key, value) => {
     const redis = typeof client === 'function' ? await client() : client
     const stored = `${prefix}${key}`

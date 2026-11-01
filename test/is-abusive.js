@@ -219,7 +219,12 @@ test('invalid options throw', t => {
     [{ secret: '' }, /secret/],
     [{ secret: undefined }, /secret/],
     [{ sibling: { lookup: 1 } }, /sibling\.lookup/],
-    [{ sibling: { min: 0 } }, /sibling\.min/],
+    [{ sibling: { lookup: null } }, /sibling\.lookup/],
+    [{ sibling: {} }, /sibling\.lookup/],
+    [{ sibling: { min: 2 } }, /sibling\.lookup/],
+    [{ sibling: false }, /sibling\.lookup/],
+    [{ sibling: 7 }, /sibling\.lookup/],
+    [{ sibling: { lookup: () => [], min: 0 } }, /sibling\.min/],
     [{ rejectedDomains: 'a.com' }, /rejectedDomains/],
     [{ rejectedDomains: 7 }, /rejectedDomains/]
   ]) {
@@ -233,11 +238,72 @@ test('no options at all is valid, and every rule is off', async t => {
   t.false(isRejectedEmail('jane@yopmail.com'))
 })
 
-test('findSibling ignores an address too long to be real', async t => {
+test('a null group is the same as no group', async t => {
+  const { isAbusive, findSibling } = createAbusive({ sibling: null, ip: null })
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
+  await t.throwsAsync(findSibling('jane@acme.com'), { message: /lookup/ })
+})
+
+const addressOfLength = length => `${'a'.repeat(length - 9)}@acme.com`
+
+test('findSibling looks up to 320 characters and ignores anything longer', async t => {
+  const targets = []
   const { findSibling } = createAbusive({
-    sibling: { lookup: async () => t.fail('lookup must not run') }
+    sibling: {
+      lookup: target => {
+        targets.push(target)
+        return []
+      }
+    }
   })
-  t.is(await findSibling(`a@${'.'.repeat(1000)}x`), null)
+  t.is(await findSibling(addressOfLength(321)), null)
+  t.is(targets.length, 0)
+  t.is(await findSibling(addressOfLength(320)), null)
+  t.is(targets.length, 1)
+})
+
+test('an address over 320 characters is not abusive and takes no IP', async t => {
+  const { signup, store } = abusive()
+  t.false(await signup(addressOfLength(321)))
+  t.is(store.values.size, 0)
+  t.false(await signup(addressOfLength(320)))
+  t.is(store.values.size, 1)
+})
+
+test('an address with two @ or whitespace cannot take an IP or be judged by it', async t => {
+  const { signup, store } = abusive()
+  for (const email of [
+    'a@@acme.com',
+    'a@b@acme.com',
+    'a@ acme.com',
+    'a b@acme.com',
+    'a\t@acme.com',
+    'a\u00a0b@acme.com',
+    'a@acme.com,b@acme.com',
+    'a@acme.com, b@acme.com',
+    'Jane <jane@acme.com>'
+  ]) {
+    t.false(await signup(email), email)
+  }
+  t.is(store.values.size, 0)
+  await signup('jane@acme.com')
+  t.false(await signup('a@@acme.com'))
+  t.is(store.values.size, 1)
+})
+
+test('an unusual well-formed address still takes an IP', async t => {
+  for (const email of [
+    "o'brien@acme.com",
+    'josé@acme.com',
+    'a@münchen.de',
+    'a@localhost',
+    '"a"@acme.com'
+  ]) {
+    const { signup, store } = abusive()
+    t.false(await signup(email), email)
+    t.is(store.values.size, 1, email)
+    t.true(await signup('other@acme.com'), email)
+  }
 })
 
 const networks = [
@@ -250,7 +316,14 @@ const networks = [
   ['2001:db8::1', '2001:db8:0:0::/64'],
   ['::1', '0:0:0:0::/64'],
   ['fe80::1%eth0', 'fe80:0:0:0::/64'],
-  ['2001:db8:1:2:3:4:1.2.3.4', '2001:db8:1:2::/64']
+  ['2001:db8:1:2:3:4:1.2.3.4', '2001:db8:1:2::/64'],
+  ['0:0:0:0:0:FFFF:1.2.3.4', '1.2.3.4'],
+  ['::ffff:1.2.3.4%eth0', '1.2.3.4'],
+  ['1::ffff:1.2.3.4', '1:0:0:0::/64'],
+  ['::1:ffff:1.2.3.4', '0:0:0:0::/64'],
+  ['::ffff:0:1.2.3.4', '0:0:0:0::/64'],
+  ['2001:db8:1:2::', '2001:db8:1:2::/64'],
+  ['::', '0:0:0:0::/64']
 ]
 
 for (const [input, expected] of networks) {
