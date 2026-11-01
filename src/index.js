@@ -216,7 +216,7 @@ const createAbusive = ({
     return null
   }
 
-  const siblingOf = async candidate =>
+  const siblingOf = candidate =>
     isSearchable(candidate) ? registeredSibling(candidate) : null
 
   const findSibling = async email => {
