@@ -124,7 +124,7 @@ test('an explicit undefined timeoutMs and ttlMs mean their defaults', async t =>
   const client = fakeRedis()
   const store = redisStore(client, { timeoutMs: undefined, ttlMs: undefined })
   await store.claim('k', 'v')
-  t.is(client.calls[0][4], 30 * 24 * 60 * 60 * 1000)
+  t.deepEqual(client.calls[0], ['set', 'abusive:k', 'v', 'NX'])
 })
 
 test('a ttlMs Redis would refuse throws', t => {

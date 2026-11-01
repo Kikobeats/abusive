@@ -39,7 +39,9 @@ const redisStore = (
   if (timeoutMs !== undefined) {
     assertMilliseconds('timeoutMs', timeoutMs, MAX_TIMEOUT_MS)
   }
-  assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
+  if (ttlMs !== undefined) {
+    assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
+  }
   const expiry = ttlMs === undefined ? [] : ['PX', ttlMs]
   const claim = async (key, value) => {
     const redis = typeof client === 'function' ? await client() : client
