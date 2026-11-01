@@ -216,34 +216,41 @@ const createAbusive = ({
     return null
   }
 
+  const siblingOf = async candidate =>
+    isSearchable(candidate) ? registeredSibling(candidate) : null
+
   const findSibling = async email => {
     if (lookup == null) {
       throw new TypeError('`sibling.lookup` is required to find siblings')
     }
     if (String(email).length > MAX_ADDRESS_LENGTH) return null
     const candidate = parseEmail(email)
-    if (candidate === null || !isSearchable(candidate)) return null
-    return registeredSibling(candidate)
+    return candidate === null ? null : siblingOf(candidate)
+  }
+
+  const reportingFailure = async (email, rule) => {
+    try {
+      return await rule()
+    } catch (error) {
+      notifyQuietly(onError, { email, error })
+      return null
+    }
   }
 
   const reasonOf = async ({ email, parts, ip, verified }) => {
-    const attempt = async rule => {
-      try {
-        return await rule()
-      } catch (error) {
-        notifyQuietly(onError, { email, error })
-        return null
-      }
-    }
-    if (lookup != null && (await attempt(() => findSibling(email)))) {
+    if (
+      lookup != null &&
+      (await reportingFailure(email, () => siblingOf(parts)))
+    ) {
       return SIBLING
     }
     if (verified !== true || ipRule === null) return null
     const address = `${parts.local}@${parts.domain}`
     if (!SINGLE_ADDRESS.test(address)) return null
-    return (await attempt(() => ipRule.isIpUsedByAnother(address, ip)))
-      ? IP
-      : null
+    const isTaken = await reportingFailure(email, () =>
+      ipRule.isIpUsedByAnother(address, ip)
+    )
+    return isTaken ? IP : null
   }
 
   const isAbusive = async check => {
