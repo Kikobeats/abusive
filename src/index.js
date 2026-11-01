@@ -308,14 +308,14 @@ const createAbusive = ({
           isGmail(domain) || freeEmailDomains.has(domain)
       })
 
-  const refusalOf = async ({ email, ip, verified }) => {
-    const candidate = signupCandidateOf(email)
+  const refusalOf = async (candidate, { email, ip, verified }) => {
     if (candidate === null) return { reason: MALFORMED }
+    const report = error => notifyQuietly(onError, { email, error })
     const attempt = async rule => {
       try {
         return await rule()
       } catch (error) {
-        notifyQuietly(onError, { email, error })
+        report(error)
         return null
       }
     }
@@ -326,19 +326,26 @@ const createAbusive = ({
       return { reason: SIBLING }
     }
     return verified === true && screen
-      ? attempt(() => screen.admitSignup(candidate, ip))
+      ? attempt(() => screen.admitSignup(candidate, ip, report))
       : null
   }
 
-  const isAbusive = async ({ email, ip, verified = false } = {}) => {
-    const refusal = await refusalOf({ email, ip, verified })
-    if (refusal === null) return false
-    notifyQuietly(onAbusive, {
-      email,
-      domain: typeof email === 'string' ? parseEmail(email)?.domain : undefined,
-      reason: refusal.reason
-    })
-    return true
+  const isAbusive = async check => {
+    try {
+      const { email, ip, verified = false } = check ?? {}
+      const candidate = signupCandidateOf(email)
+      const refusal = await refusalOf(candidate, { email, ip, verified })
+      if (refusal === null) return false
+      notifyQuietly(onAbusive, {
+        email,
+        domain: candidate?.domain,
+        reason: refusal.reason
+      })
+      return true
+    } catch (error) {
+      notifyQuietly(onError, { error })
+      return false
+    }
   }
 
   return {

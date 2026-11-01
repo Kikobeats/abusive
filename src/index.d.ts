@@ -49,7 +49,7 @@ export interface AbusiveOptions {
   isSharedDomain?: (domain: string) => boolean | Promise<boolean>
   onBlock?: (domain: string) => unknown
   onAbusive?: (details: { email: string, domain?: string, reason: AbusiveReason }) => unknown
-  onError?: (details: { email: string, error: unknown }) => unknown
+  onError?: (details: { email?: string, error: unknown }) => unknown
 }
 
 export interface Abusive {

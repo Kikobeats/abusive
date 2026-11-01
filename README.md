@@ -114,17 +114,17 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 |---|---|
 | `email` | The address. |
 | `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. |
-| `verified` | `true` once the address is verified, for an account you have not accepted yet. It applies every rule, takes the IP and counts the inbox. Defaults to `false`, which only reads, so an endpoint anyone can call cannot take an IP or block a domain, or test who is registered. |
+| `verified` | `true` once the address is verified, for an account you have not accepted yet. It applies every rule, takes the IP and counts the inbox. Defaults to `false`, which only reads, so an endpoint anyone can call cannot take an IP or block a domain. Its answer still shows whether a sibling exists or a domain is blocked, so rate limit that endpoint. |
 
-It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store that hangs without failing makes it hang too, so give your client a command timeout, as above.
+It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A lock you hold around it is yours to fail closed: treating a lock timeout as allowed lets a flood of requests through. A store that hangs without failing makes it hang too, so give your client a command timeout, as above.
 
 - **New accounts only.** Do not pass `verified` for accounts you already accepted. An admitted inbox passes again for `ipMemoryMs` without taking the new IP, but after that it counts as new.
 - **One call at a time per address.** Simultaneous verified calls for the same address can each take an IP, and one being refused can release what the other holds, so hold a lock per account around it.
 - **A race can refuse both.** Signups are judged against claims still in progress, so two arriving together can both be refused when the first is then refused too. Refusal is never permanent here: trying again gets the right answer.
 - **Blocks win.** A blocked domain refuses an admitted inbox too, so an abuser you deleted cannot return on it.
 - **One inbox, one account.** `jane+1@acme.com` then `jane+2@acme.com` is refused as `same-inbox`, and so is `j.ane@gmail.com` after `jane@gmail.com`.
-- **A refused signup takes nothing.** An address the IP rule refuses is not counted, even when it arrives at the same moment as the winner, and one the burst rule refuses gives its IP back. It does stay in the burst count until the window ends.
-- **Callbacks see clean hostnames.** Rules and callbacks only ever receive a lowercase ASCII hostname, safe to put in a query. Internationalised domains arrive as punycode.
+- **A refused signup takes nothing.** An address the IP rule refuses is not counted, even when it arrives at the same moment as the winner, and one the burst rule refuses gives its IP back. It does stay in the burst count until the window ends. If giving back fails, the refusal stands and `onError` is called, and that inbox passes as admitted for `ipMemoryMs`.
+- **Callbacks see clean hostnames.** `isTrustedDomain`, `isSharedDomain`, `onBlock` and `domain` in `onAbusive` only ever carry a lowercase ASCII hostname, safe to put in a query, or nothing when the address is `malformed`. Internationalised domains arrive as punycode. The `email` in `onAbusive` and `onError` is what you passed in, so escape it before showing it.
 
 Do not tell the person signing up why. It tells them what to change.
 
@@ -140,7 +140,7 @@ Do not tell the person signing up why. It tells them what to change.
 | `burstBlockMs` | `number` | 90 days | How long that block lasts. |
 | `onAbusive` | `function` | | Called with `{ email, domain, reason }` when `isAbusive` resolves `true`. Use it to log why. Its errors are ignored. |
 | `onError` | `function` | | Called with `{ email, error }` when a check fails. Its errors are ignored. |
-| `onBlock` | `function` | | Called with the domain when a burst blocks it. It is not awaited and its errors are ignored, so on serverless wrap it in your platform's `waitUntil`. Use it to look at the block, since three people at a university can trigger one. |
+| `onBlock` | `function` | | Called with the domain when a burst blocks it, or may have: a block that failed to confirm still calls it, unless reading the key shows it is absent. It is not awaited and its errors are ignored, so on serverless wrap it in your platform's `waitUntil`. Use it to look at the block, since three people at a university can trigger one. |
 | `isSharedDomain` | `function` | `() => false` | More domains shared by unrelated people. They skip the burst rule and keep the IP rule, as Gmail and every domain in `dataset` already do, matched exactly. No list is complete: add the providers your users have. |
 | `isTrustedDomain` | `function` | `() => false` | Domains that pass the IP, burst and block rules, such as those with a paying customer. It is only called when a rule would refuse, and never for a shared domain: one paying Gmail customer must not open the IP rule for all of Gmail. It does not cover subdomains, and a block on a parent refuses them outright. Trusted signups still count, so if trust lapses, the next new inbox can block the domain. |
 

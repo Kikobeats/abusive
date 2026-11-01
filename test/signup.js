@@ -291,6 +291,110 @@ test('one failed check does not skip the next', async t => {
   t.true(await isAbusive({ email: 'b@other.com', ip: IP, verified: true }))
 })
 
+test('a failed cleanup keeps the refusal and reports it', async t => {
+  const store = memoryStore()
+  const remove = store.remove
+  store.remove = async () => {
+    throw new Error('remove failed')
+  }
+  const reasons = []
+  const errors = []
+  const { isAbusive } = createAbusive({
+    dataset,
+    store,
+    secret: 's',
+    burstLimit: 2,
+    onAbusive: ({ reason }) => reasons.push(reason),
+    onError: ({ error }) => errors.push(error.message)
+  })
+  await isAbusive({ email: 'first@acme.com', ip: IP, verified: true })
+  t.true(await isAbusive({ email: 'second@other.com', ip: IP, verified: true }))
+  await isAbusive({ email: 'a@burst.com', ip: '198.51.100.1', verified: true })
+  t.true(
+    await isAbusive({
+      email: 'b@burst.com',
+      ip: '198.51.100.2',
+      verified: true
+    })
+  )
+  t.deepEqual(reasons, ['same-ip', 'domain-burst'])
+  t.deepEqual(errors, ['remove failed', 'remove failed', 'remove failed'])
+  store.remove = remove
+})
+
+test('a failed check after the claims still frees them, or reports why not', async t => {
+  const store = memoryStore()
+  store.countRecent = async () => {
+    throw new Error('redis down')
+  }
+  store.remove = async () => {
+    throw new Error('remove failed')
+  }
+  const errors = []
+  const { isAbusive } = createAbusive({
+    dataset,
+    store,
+    secret: 's',
+    onError: ({ error }) => errors.push(error.message)
+  })
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP, verified: true }))
+  t.deepEqual(errors, ['remove failed', 'remove failed', 'redis down'])
+})
+
+test('a failed block claim only tells you when the block may exist', async t => {
+  const run = async read => {
+    let fired = 0
+    const store = memoryStore()
+    const claim = store.claim.bind(store)
+    store.claim = (key, ...rest) =>
+      key.startsWith('blocked:')
+        ? Promise.reject(new Error('timeout'))
+        : claim(key, ...rest)
+    const ownRead = store.read
+    store.read = key =>
+      key.startsWith('blocked:') && store.reading ? read() : ownRead(key)
+    const { isAbusive } = createAbusive({
+      dataset,
+      store,
+      secret: 's',
+      burstLimit: 1,
+      onBlock: () => {
+        fired++
+      }
+    })
+    const check = isAbusive({ email: 'a@acme.com', verified: true })
+    store.reading = true
+    await check
+    await new Promise(resolve => setImmediate(resolve))
+    return fired
+  }
+  t.is(await run(async () => null), 0)
+  t.is(await run(async () => '1'), 1)
+  t.is(
+    await run(async () => {
+      throw new Error('still down')
+    }),
+    1
+  )
+})
+
+test('isAbusive never rejects, whatever it is given', async t => {
+  const errors = []
+  const { isAbusive } = createAbusive({
+    dataset,
+    onError: ({ error }) => errors.push(error.message)
+  })
+  t.true(await isAbusive(null))
+  t.false(
+    await isAbusive({
+      get email () {
+        throw new Error('boom')
+      }
+    })
+  )
+  t.deepEqual(errors, ['boom'])
+})
+
 test('hooks report why, and a failing hook changes nothing', async t => {
   const seen = []
   const { isAbusive } = createAbusive({
@@ -299,8 +403,8 @@ test('hooks report why, and a failing hook changes nothing', async t => {
   })
   t.true(await isAbusive({ email: 'nope' }))
   t.deepEqual(seen, [{ email: 'nope', domain: undefined, reason: 'malformed' }])
-  t.true(await isAbusive({ email: 'a b@acme.com' }))
-  t.is(seen[1].domain, 'acme.com')
+  t.true(await isAbusive({ email: 'a@evil.com,x@victim.com' }))
+  t.is(seen[1].domain, undefined)
   t.true(await isAbusive({ email: 7 }))
   for (const onAbusive of [
     () => {
@@ -588,26 +692,6 @@ test('a failed trust check after taking the IP gives it back', async t => {
     message: 'stripe down'
   })
   t.is(store.values.size, 0)
-})
-
-test('a failed block claim still tells you', async t => {
-  let fired = 0
-  const store = memoryStore()
-  const claim = store.claim.bind(store)
-  store.claim = (key, ...rest) => {
-    if (key.startsWith('blocked:')) return Promise.reject(new Error('timeout'))
-    return claim(key, ...rest)
-  }
-  const { admitSignup } = screen({
-    store,
-    burstLimit: 1,
-    onBlock: () => {
-      fired++
-    }
-  })
-  await t.throwsAsync(admitSignup('a@acme.com'), { message: 'timeout' })
-  await new Promise(resolve => setImmediate(resolve))
-  t.is(fired, 1)
 })
 
 test('a failed shared check takes nothing', async t => {

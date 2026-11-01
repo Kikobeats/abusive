@@ -98,13 +98,23 @@ const createSignupScreen = ({
   }
 
   const blockAfterBurst = async domain => {
+    const key = blockKey(domain)
     const token = randomUUID()
     try {
-      const holder = await store.claim(blockKey(domain), token, burstBlockMs)
+      const holder = await store.claim(key, token, burstBlockMs)
       if (holder === token) notifyBlock(domain)
     } catch (error) {
-      notifyBlock(domain)
+      const mayHaveLanded = await store.read(key).catch(() => true)
+      if (mayHaveLanded) notifyBlock(domain)
       throw error
+    }
+  }
+
+  const tidyUp = async (report, ...keys) => {
+    try {
+      await store.remove(...keys)
+    } catch (error) {
+      report(error)
     }
   }
 
@@ -146,7 +156,7 @@ const createSignupScreen = ({
     return { reason: DOMAIN_BURST }
   }
 
-  const admitNewInbox = async ({ identity, domain }, key, judge) => {
+  const admitNewInbox = async ({ identity, domain }, key, judge, report) => {
     const holder = hash(identity)
     const owner =
       key === null ? null : await store.claim(key, holder, ipMemoryMs)
@@ -154,7 +164,7 @@ const createSignupScreen = ({
       return { reason: SAME_IP }
     }
     const releaseIp = async () => {
-      if (owner === holder) await store.remove(key)
+      if (owner === holder) await tidyUp(report, key)
     }
     try {
       const refusal = await applyBurstRule({ domain, holder }, judge)
@@ -166,9 +176,9 @@ const createSignupScreen = ({
     }
   }
 
-  const admitSignup = async (candidate, ip) => {
-    const { identity, spelling, domain } = candidate
-    const judge = judgeOf(domain)
+  const admitSignup = async (candidate, ip, report) => {
+    const { identity, spelling } = candidate
+    const judge = judgeOf(candidate.domain)
     await judge.isShared()
     const spelled = hash(spelling)
     const marker = admittedKey(identity)
@@ -179,11 +189,11 @@ const createSignupScreen = ({
     const winner = await store.claim(marker, spelled, ipMemoryMs)
     if (winner !== spelled) return { reason: SAME_INBOX }
     try {
-      const refusal = await admitNewInbox(candidate, ipKey(ip), judge)
-      if (refusal !== null) await store.remove(marker)
+      const refusal = await admitNewInbox(candidate, ipKey(ip), judge, report)
+      if (refusal !== null) await tidyUp(report, marker)
       return refusal
     } catch (error) {
-      await store.remove(marker)
+      await tidyUp(report, marker)
       throw error
     }
   }
