@@ -40,7 +40,7 @@ const redisStore = require('abusive/redis')
 const { isAbusive } = require('abusive')({
   dataset: require('free-email-domains'),
   lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY)),
-  store: redisStore(new Redis(process.env.REDIS_URL, { commandTimeout: 1000 })),
+  store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }),
   secret: process.env.ABUSIVE_SECRET
 })
 
@@ -103,7 +103,7 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 
 It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken for `ipMemoryMs`, whether or not that account still exists.
 
-It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store that hangs without failing makes it hang too, so give your client a command timeout, as above.
+It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store that hangs without failing makes it hang too, so set `timeoutMs`, as above.
 
 - **Addresses are compared as written,** after lowercasing and Unicode folding. `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
 - **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception.
@@ -121,7 +121,7 @@ It resolves `true` or `false` and never rejects. A check that fails counts as no
 
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set` and `get`. Keys start with `abusive:`, or the `prefix` option. To keep IPs somewhere else, pass an object with one method:
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set` and `get`, or a function returning one, for a client that connects lazily. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check. To keep IPs somewhere else, pass an object with one method:
 
 `claim(key, value, ttlMs)` atomically stores `value` if `key` is free, and resolves whoever holds it. That being atomic is what stops two signups at the same moment from both taking an IP.
 

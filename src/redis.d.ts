@@ -7,9 +7,10 @@ export interface RedisClient {
 
 export interface RedisStoreOptions {
   prefix?: string
+  timeoutMs?: number
 }
 
-export function redisStore (client: RedisClient, options?: RedisStoreOptions): AbusiveStore
+export function redisStore (client: RedisClient | (() => Promise<RedisClient> | RedisClient), options?: RedisStoreOptions): AbusiveStore
 
 declare const _default: typeof redisStore & { redisStore: typeof redisStore }
 export default _default

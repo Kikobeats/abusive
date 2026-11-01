@@ -58,6 +58,34 @@ test('claim never pretends to hold a key it could not store', async t => {
   })
 })
 
+test('the client can come from a function, resolved on each claim', async t => {
+  const client = fakeRedis()
+  let calls = 0
+  const store = redisStore(async () => {
+    calls++
+    return client
+  })
+  t.is(await store.claim('ip:a', 'jane', 1000), 'jane')
+  t.is(await store.claim('ip:a', 'john', 1000), 'jane')
+  t.is(calls, 2)
+})
+
+test('a client function that fails rejects the claim', async t => {
+  const store = redisStore(async () => null)
+  await t.throwsAsync(store.claim('k', 'v', 1), { instanceOf: TypeError })
+})
+
+test('timeoutMs rejects instead of hanging on a stalled Redis', async t => {
+  const stalled = { set: () => new Promise(() => {}) }
+  const store = redisStore(stalled, { timeoutMs: 10 })
+  await t.throwsAsync(store.claim('k', 'v', 1), { message: /timed out/ })
+})
+
+test('timeoutMs does not get in the way of a working Redis', async t => {
+  const store = redisStore(fakeRedis(), { timeoutMs: 1000 })
+  t.is(await store.claim('k', 'v', 1), 'v')
+})
+
 test('a client is required', t => {
   t.throws(() => redisStore(), { instanceOf: TypeError })
 })
