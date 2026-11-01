@@ -14,10 +14,10 @@ export type Lookup = (target: LookupTarget) =>
   Iterable<MaybeEmail> | AsyncIterable<MaybeEmail> | Promise<Iterable<MaybeEmail>>
 
 export interface AbusiveStore {
-  claim: (key: string, value: string, ttlMs: number) => Promise<string>
+  claim: (key: string, value: string) => Promise<string>
 }
 
-export type AbusiveReason = 'same-ip' | 'sibling'
+export type AbusiveReason = 'ip' | 'sibling'
 
 export interface AbusiveCheck {
   email: string
@@ -25,14 +25,20 @@ export interface AbusiveCheck {
   verified?: boolean
 }
 
-export interface AbusiveOptions {
-  dataset: Iterable<string>
+export interface SiblingOptions {
   lookup?: Lookup
-  limit?: number
-  minSiblings?: number | ((candidate: EmailParts) => number)
-  store?: AbusiveStore
+  min?: number | ((candidate: EmailParts) => number)
+}
+
+export interface IpOptions {
+  store: AbusiveStore
+}
+
+export interface AbusiveOptions {
+  rejectedDomains?: Iterable<string>
+  sibling?: SiblingOptions
+  ip?: IpOptions
   secret?: string
-  ipMemoryMs?: number
   onAbusive?: (details: { email: string, domain: string, reason: AbusiveReason }) => unknown
   onError?: (details: { email?: string, error: unknown }) => unknown
 }
@@ -40,15 +46,15 @@ export interface AbusiveOptions {
 export interface Abusive {
   findSibling: (email: string) => Promise<string | null>
   isAbusive: (check: AbusiveCheck) => Promise<boolean>
-  isFreeEmail: (email: string) => boolean
-  isFreeEmailDomain: (domain: string) => boolean
+  isRejectedEmail: (email: string) => boolean
+  isRejectedDomain: (domain: string) => boolean
   isSibling: (candidate: string | EmailParts, existing: string | EmailParts) => boolean
   parseEmail: (email: string) => EmailParts | null
 }
 
 export function parseEmail (email: string): EmailParts | null
 export function isSibling (candidate: string | EmailParts, existing: string | EmailParts): boolean
-export function createAbusive (options: AbusiveOptions): Abusive
+export function createAbusive (options?: AbusiveOptions): Abusive
 
 declare const _default: typeof createAbusive & {
   createAbusive: typeof createAbusive

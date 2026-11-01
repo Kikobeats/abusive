@@ -69,7 +69,11 @@ const buildDatasetCase = {
   timed: () => {
     let built = 0
     for (let build = 0; build < DATASET_BUILDS; build++) {
-      if (createAbusive({ dataset }).isFreeEmailDomain('gmail.com')) built++
+      if (
+        createAbusive({ rejectedDomains: dataset }).isRejectedDomain(
+          'gmail.com'
+        )
+      ) { built++ }
     }
     return built
   },
@@ -80,7 +84,7 @@ const isSiblingCase = {
   name: 'isSibling fixture pairs',
   extra: `${LABELED_PAIRS.length * PAIR_ROUNDS} pairs`,
   setup: state => {
-    state.isSibling = createAbusive({ dataset }).isSibling
+    state.isSibling = createAbusive({ rejectedDomains: dataset }).isSibling
   },
   timed: ({ isSibling }) => {
     let siblings = 0
@@ -94,17 +98,19 @@ const isSiblingCase = {
   verify: siblings => siblings === EXPECTED_SIBLINGS
 }
 
-const isFreeEmailCase = {
-  name: 'isFreeEmail subdomains',
+const isRejectedEmailCase = {
+  name: 'isRejectedEmail subdomains',
   extra: `${dataset.length} free + ${CUSTOM_DOMAINS} custom addresses`,
   setup: state => {
-    state.isFreeEmail = createAbusive({ dataset }).isFreeEmail
+    state.isRejectedEmail = createAbusive({
+      rejectedDomains: dataset
+    }).isRejectedEmail
     state.emails = [...freeEmails(), ...customEmails()]
   },
-  timed: ({ isFreeEmail, emails }) => {
+  timed: ({ isRejectedEmail, emails }) => {
     let free = 0
     for (const email of emails) {
-      if (isFreeEmail(email)) free++
+      if (isRejectedEmail(email)) free++
     }
     return free
   },
@@ -118,8 +124,8 @@ const findSiblingCase = {
   } lookup results`,
   setup: state => {
     state.findSibling = createAbusive({
-      dataset,
-      lookup: siblingLookup
+      rejectedDomains: dataset,
+      sibling: { lookup: siblingLookup }
     }).findSibling
   },
   timed: async ({ findSibling }) => {
@@ -137,7 +143,7 @@ const findSiblingCase = {
 const CASES = [
   buildDatasetCase,
   isSiblingCase,
-  isFreeEmailCase,
+  isRejectedEmailCase,
   findSiblingCase
 ]
 

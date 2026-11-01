@@ -12,28 +12,24 @@ const memoryStore = () => {
   const values = new Map()
   return {
     values,
-    ttls: new Map(),
-    async claim (key, value, ttlMs) {
-      if (!values.has(key)) {
-        values.set(key, value)
-        this.ttls.set(key, ttlMs)
-      }
+    claim: async (key, value) => {
+      if (!values.has(key)) values.set(key, value)
       return values.get(key)
     }
   }
 }
 
-const abusive = (options = {}) => {
-  const store = options.store ?? memoryStore()
+const abusive = ({ lookup, store = memoryStore(), ...rest } = {}) => {
   const reasons = []
   const errors = []
   const { isAbusive } = createAbusive({
-    dataset,
+    rejectedDomains: dataset,
     secret: 'secret',
     onAbusive: ({ reason }) => reasons.push(reason),
     onError: ({ error }) => errors.push(error.message),
-    ...options,
-    store
+    ...rest,
+    ...(lookup && { sibling: { lookup } }),
+    ip: { store }
   })
   return {
     store,
@@ -53,7 +49,7 @@ test('a different address from a used IP is abusive, on any domain', async t => 
   await signup('azod738@gmail.com')
   t.true(await signup('waliullahshah965@gmail.com'))
   t.true(await signup('brittany@other.kr'))
-  t.deepEqual(reasons, ['same-ip', 'same-ip'])
+  t.deepEqual(reasons, ['ip', 'ip'])
 })
 
 test('the same address coming back to its IP is not abusive', async t => {
@@ -99,17 +95,15 @@ test('only a verified address takes an IP or is judged by it', async t => {
   t.true(await signup('b@other.com'))
 })
 
-test('nothing is stored in the clear, and an IP is remembered for 30 days', async t => {
+test('nothing is stored in the clear', async t => {
   const { signup, store } = abusive()
   await signup('jane@acme.com')
   const [[key, value]] = store.values
   t.regex(key, /^ip:[0-9a-f]{64}$/)
   t.regex(value, /^[0-9a-f]{64}$/)
-  t.is(store.ttls.get(key), 30 * 24 * 60 * 60 * 1000)
-  const other = abusive({ secret: 'other', ipMemoryMs: 5 })
+  const other = abusive({ secret: 'other' })
   await other.signup('jane@acme.com')
   t.false(other.store.values.has(key))
-  t.is([...other.store.ttls.values()][0], 5)
 })
 
 test('simultaneous signups from one IP give one account', async t => {
@@ -142,7 +136,7 @@ test('without a store it only looks for siblings', async t => {
   const lookup = async function * () {
     yield 'destek@acme.com'
   }
-  const { isAbusive } = createAbusive({ dataset, lookup })
+  const { isAbusive } = createAbusive({ sibling: { lookup } })
   t.true(await isAbusive({ email: 'destek6@acme.com', verified: true }))
   t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
   t.false(await isAbusive({ email: 'other@acme.com', ip: IP, verified: true }))
@@ -198,7 +192,7 @@ test('onAbusive reports why, and a failing hook changes nothing', async t => {
   await signup('a@acme.com')
   await signup('b@Other.com')
   t.deepEqual(seen, [
-    { email: 'b@Other.com', domain: 'other.com', reason: 'same-ip' }
+    { email: 'b@Other.com', domain: 'other.com', reason: 'ip' }
   ])
   for (const onAbusive of [
     () => {
@@ -216,24 +210,32 @@ test('onAbusive reports why, and a failing hook changes nothing', async t => {
 
 test('invalid options throw', t => {
   const options = extra => () =>
-    createAbusive({ dataset, store: memoryStore(), secret: 's', ...extra })
+    createAbusive({ ip: { store: memoryStore() }, secret: 's', ...extra })
   for (const [extra, message] of [
     [{ onAbusive: 1 }, /onAbusive/],
     [{ onError: 1 }, /onError/],
-    [{ store: {} }, /store/],
+    [{ ip: {} }, /ip\.store/],
+    [{ ip: { store: {} } }, /ip\.store/],
     [{ secret: '' }, /secret/],
     [{ secret: undefined }, /secret/],
-    [{ ipMemoryMs: 1.5 }, /ipMemoryMs/],
-    [{ ipMemoryMs: 1e30 }, /ipMemoryMs/]
+    [{ sibling: { lookup: 1 } }, /sibling\.lookup/],
+    [{ sibling: { min: 0 } }, /sibling\.min/],
+    [{ rejectedDomains: 'a.com' }, /rejectedDomains/],
+    [{ rejectedDomains: 7 }, /rejectedDomains/]
   ]) {
     t.throws(options(extra), { instanceOf: TypeError, message })
   }
 })
 
+test('no options at all is valid, and every rule is off', async t => {
+  const { isAbusive, isRejectedEmail } = createAbusive()
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
+  t.false(isRejectedEmail('jane@yopmail.com'))
+})
+
 test('findSibling ignores an address too long to be real', async t => {
   const { findSibling } = createAbusive({
-    dataset: [],
-    lookup: async () => t.fail('lookup must not run')
+    sibling: { lookup: async () => t.fail('lookup must not run') }
   })
   t.is(await findSibling(`a@${'.'.repeat(1000)}x`), null)
 })

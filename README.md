@@ -37,10 +37,10 @@ const Redis = require('ioredis')
 const stripeLookup = require('abusive/stripe')
 const redisStore = require('abusive/redis')
 
-const { isAbusive } = require('abusive')({
-  dataset: require('free-email-domains'),
-  lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY)),
-  store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }),
+const { isAbusive, isRejectedEmail } = require('abusive')({
+  rejectedDomains: require('free-email-domains'),
+  sibling: { lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY), { limit: 500 }) },
+  ip: { store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }) },
   secret: process.env.ABUSIVE_SECRET
 })
 
@@ -52,7 +52,7 @@ await isAbusive({ email: 'jane@gmail.com', ip, verified: true }) // => false
 await isAbusive({ email: 'john@gmail.com', ip, verified: true }) // => true, same IP
 ```
 
-`store` and `secret` are optional: without them `isAbusive` only looks for siblings. `isFreeEmail` stays separate, because refusing free providers is your policy and not abuse.
+Each rule is on when its group is present. `isRejectedEmail` stays separate, because refusing a list of domains is your policy and not abuse.
 
 Keep the refusal message neutral. Saying that a similar account exists tells an attacker which addresses are registered.
 
@@ -72,7 +72,7 @@ Two different addresses at the same domain are **siblings** in one of two ways:
 | Kind | What matches | Same person? |
 |---|---|---|
 | **Same inbox** | The part before the `@` without its `+tag`. Gmail also ignores dots, and `googlemail.com` is the same inbox as `gmail.com`. | Yes, always refused |
-| **Numbered** | The inbox differs only by `.`, `_`, `-` or a counter: one or two digits next to a letter, at the end, or at the start when the end has none. | Maybe, see [minSiblings](#minsiblings) |
+| **Numbered** | The inbox differs only by `.`, `_`, `-` or a counter: one or two digits next to a letter, at the end, or at the start when the end has none. | Maybe, see [minSiblings](#siblingmin) |
 
 | Candidate | Registered | Sibling? |
 |---|---|---|
@@ -89,7 +89,7 @@ Two different addresses at the same domain are **siblings** in one of two ways:
 | `jane@gmail.com` | `john@gmail.com` | no, different mailbox |
 | `destek1@sub.acme.com` | `destek@acme.com` | no, different domain |
 
-A numbered address is a different inbox, so it can belong to a different person: `derek84@gmail.com` and `derek@gmail.com` may be two Dereks. On a large provider, set [minSiblings](#minsiblings) to `2`: `derek3@` is refused once `derek1@` and `derek2@` exist, while a single `derek@` lets `derek84@` in.
+A numbered address is a different inbox, so it can belong to a different person: `derek84@gmail.com` and `derek@gmail.com` may be two Dereks. On a large provider, set [minSiblings](#siblingmin) to `2`: `derek3@` is refused once `derek1@` and `derek2@` exist, while a single `derek@` lets `derek84@` in.
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
@@ -101,7 +101,7 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 | `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. |
 | `verified` | `true` once the address is verified, for an account you have not accepted yet. Only then is the IP rule applied and the IP taken, so an endpoint anyone can call cannot take one. Defaults to `false`. |
 
-It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken for `ipMemoryMs`, whether or not that account still exists.
+It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken for the store's TTL, whether or not that account still exists.
 
 It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store that hangs without failing makes it hang too, so set `timeoutMs`, as above.
 
@@ -109,21 +109,11 @@ It resolves `true` or `false` and never rejects. A check that fails counts as no
 - **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception.
 - **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
 
-### Options
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `store` | `object` | | Keeps the IPs. See [Store](#store). |
-| `secret` | `string` | required with `store` | HMAC key for IPs and addresses, neither of which is ever stored in the clear. Changing it forgets every IP. |
-| `ipMemoryMs` | `number` | 30 days | How long an IP stays taken. |
-| `onAbusive` | `function` | | Called with `{ email, domain, reason }` when `isAbusive` resolves `true`, where `reason` is `sibling` or `same-ip`. Use it to log why. Its errors are ignored. The `email` and `domain` come from the input, so escape them before showing them. |
-| `onError` | `function` | | Called with `{ email, error }` when a check fails. Its errors are ignored. |
-
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set` and `get`, or a function returning one, for a client that connects lazily. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check. To keep IPs somewhere else, pass an object with one method:
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set` and `get`, or a function returning one, for a client that connects lazily. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken, 30 days by default. To keep IPs somewhere else, pass an object with one method:
 
-`claim(key, value, ttlMs)` atomically stores `value` if `key` is free, and resolves whoever holds it. That being atomic is what stops two signups at the same moment from both taking an IP.
+`claim(key, value)` atomically stores `value` if `key` is free, and resolves whoever holds it. Keys and values arrive hashed, and how long they last is up to the store. That being atomic is what stops two signups at the same moment from both taking an IP.
 
 ## Lookups
 
@@ -145,7 +135,8 @@ Limits of Stripe search:
 | Argument | Type | Default | Description |
 |---|---|---|---|
 | `client` | `Stripe \| () => Stripe` | *required* | A Stripe client, or a function returning one. The function is called on every lookup, so the client can be created lazily. |
-| `options.pageSize` | `number` | `100` | Customers per search request. Pair it with `limit` to bound how many customers are read in total. |
+| `options.limit` | `number` | `Infinity` | Customers read per lookup. Gmail searches two domains, so it can read twice this. A custom lookup has to limit itself. |
+| `options.pageSize` | `number` | `100` | Customers per search request. Pair it with `options.limit` to bound how many customers are read in total. |
 
 ### SQL
 
@@ -170,21 +161,19 @@ const sqlLookup = async ({ domain, keyword }) => {
 
 ### abusive(options)
 
-Returns an object with the methods below. Create it once and reuse it: the dataset is indexed when the object is created.
+Returns an object with the methods below. Create it once and reuse it: `rejectedDomains` is indexed when the object is created.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| [`dataset`](#dataset) | `Iterable<string>` | *required* | Free and disposable email provider domains. |
-| [`lookup`](#lookup) | `function` | | Returns the registered addresses at a domain. Required by `findSibling`. |
-| [`limit`](#limit) | `number` | `Infinity` | Maximum addresses read per `findSibling` call. |
-| [`minSiblings`](#minsiblings) | `number \| function` | `1` | Numbered siblings needed before one is reported. |
-| `store`, `secret` and more | | | Enable the IP rule. See [isAbusive](#isabusive-email-ip-verified-). |
+| `rejectedDomains` | `Iterable<string>` | `[]` | Domains `isRejectedEmail` refuses, such as `require('free-email-domains')`. Compared case-insensitively, and a domain also covers its subdomains. |
+| `sibling.lookup` | `function` | | Returns the registered addresses at a domain. Enables the sibling rule. |
+| `sibling.min` | `number \| function` | `1` | Numbered siblings needed before one is reported. |
+| `ip.store` | `object` | | Keeps the IPs. Enables the IP rule. See [Store](#store). |
+| `secret` | `string` | required with `ip` | HMAC key for IPs and addresses, neither of which is ever stored in the clear. Changing it forgets every IP. |
+| `onAbusive` | `function` | | Called with `{ email, domain, reason }` when `isAbusive` resolves `true`, where `reason` is `sibling` or `ip`. Use it to log why. Its errors are ignored. The `email` and `domain` come from the input, so escape them before showing them. |
+| `onError` | `function` | | Called with `{ email, error }` when a check fails. Its errors are ignored. |
 
-#### dataset
-
-The domains used by `isFreeEmail`, for example `require('free-email-domains')`. Domains are compared case-insensitively.
-
-#### lookup
+#### sibling.lookup
 
 Type: `({ domain: string, keyword: string }) => Iterable<string> | AsyncIterable<string> | Promise<Iterable<string>>`
 
@@ -192,15 +181,11 @@ Returns the addresses already registered at `domain`.
 
 - `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
 - `keyword` is a fragment most siblings contain, so you can narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower. How it is picked is in [Edge cases](#edge-cases).
-- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `minSiblings`) or when `limit` is reached.
+- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `sibling.min`) or when `options.limit` is reached.
 - Both arguments are safe to put in a query: `lookup` is never called for a malformed address, for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`, or for one whose inbox is only separators. `keyword` is never empty.
 - Entries that are not strings are skipped. An error it throws rejects `findSibling`; deciding whether to fail open is up to you.
 
-#### limit
-
-The maximum number of addresses `findSibling` reads from `lookup` before giving up, across every call. It bounds the work on domains with many registered users. Once it is reached, no more entries or pages are requested. It must be a non-negative integer or `Infinity`, or a `TypeError` is thrown.
-
-#### minSiblings
+#### sibling.min
 
 Type: `number | (candidate: { local: string, domain: string }) => number`
 
@@ -210,10 +195,11 @@ Pass a function to choose per candidate, for example strict on work domains and 
 
 ```js
 const { findSibling } = require('abusive')({
-  dataset: require('free-email-domains'),
-  lookup,
-  minSiblings: ({ domain }) =>
-    ['gmail.com', 'googlemail.com'].includes(domain) ? 2 : 1
+  sibling: {
+    lookup,
+    min: ({ domain }) =>
+      ['gmail.com', 'googlemail.com'].includes(domain) ? 2 : 1
+  }
 })
 ```
 
@@ -224,10 +210,10 @@ It must be a positive integer: an invalid value throws a `TypeError`, and an inv
 | Method | Returns |
 |---|---|
 | `.isAbusive({ email, ip, verified })` | `Promise` of `true` or `false`. See [isAbusive](#isabusive-email-ip-verified-). |
-| `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `minSiblings`), or `null`. |
+| `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `sibling.min`), or `null`. |
 | `.isSibling(candidate, existing)` | `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`. |
-| `.isFreeEmail(email)` | `true` when the address is hosted by a provider in `dataset`. |
-| `.isFreeEmailDomain(domain)` | `true` when the domain, or any parent of it, is in `dataset`. |
+| `.isRejectedEmail(email)` | `true` when the address is on a domain in `rejectedDomains`. |
+| `.isRejectedDomain(domain)` | `true` when the domain, or any parent of it, is in `rejectedDomains`. |
 | `.parseEmail(email)` | `{ local, domain }` in canonical form, split at the last `@`, or `null` when the address is malformed. |
 
 `isSibling` and `parseEmail` are also available without an instance, as `require('abusive').isSibling` and `require('abusive').parseEmail`.

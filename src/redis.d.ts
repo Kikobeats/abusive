@@ -8,6 +8,7 @@ export interface RedisClient {
 export interface RedisStoreOptions {
   prefix?: string
   timeoutMs?: number
+  ttlMs?: number
 }
 
 export function redisStore (client: RedisClient | (() => Promise<RedisClient> | RedisClient), options?: RedisStoreOptions): AbusiveStore

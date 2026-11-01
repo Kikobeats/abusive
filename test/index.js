@@ -22,9 +22,8 @@ const SOFT_HYPHEN = String.fromCodePoint(0xad)
 const VARIATION_SELECTOR = String.fromCodePoint(0xfe0f)
 const VARIATION_SELECTOR_SUPPLEMENT = String.fromCodePoint(0xe0100)
 
-const { isFreeEmail, isFreeEmailDomain, isSibling, parseEmail } = createAbusive(
-  { dataset }
-)
+const { isRejectedEmail, isRejectedDomain, isSibling, parseEmail } =
+  createAbusive({ rejectedDomains: dataset })
 
 async function * asyncEmails (...emails) {
   yield * emails
@@ -93,7 +92,7 @@ test('parseEmail is also exported without a dataset', t => {
   t.is(createAbusive.createAbusive, createAbusive)
 })
 
-test('isFreeEmailDomain matches a provider and its subdomains', t => {
+test('isRejectedDomain matches a provider and its subdomains', t => {
   for (const domain of [
     'gmail.com',
     'hotmail.com',
@@ -103,7 +102,7 @@ test('isFreeEmailDomain matches a provider and its subdomains', t => {
     'sub.mailinator.com',
     'kiko.33mail.com'
   ]) {
-    t.true(isFreeEmailDomain(domain), domain)
+    t.true(isRejectedDomain(domain), domain)
   }
   for (const domain of [
     'microlink.io',
@@ -111,50 +110,44 @@ test('isFreeEmailDomain matches a provider and its subdomains', t => {
     'aramamotorukayit.com',
     'gmail.com.evil.io'
   ]) {
-    t.false(isFreeEmailDomain(domain), domain)
+    t.false(isRejectedDomain(domain), domain)
   }
 })
 
-test('isFreeEmail reads the domain of an address', t => {
-  t.true(isFreeEmail('someone@yopmail.com'))
-  t.true(isFreeEmail(`someone@yopmail${FULLWIDTH_DOT}com`))
-  t.true(isFreeEmail(`someone@yo${SOFT_HYPHEN}pmail.com`))
-  t.true(isFreeEmail('"a@microlink.io"@yopmail.com'))
-  t.false(isFreeEmail('kiko@microlink.io'))
-  t.false(isFreeEmail('not-an-email'))
+test('isRejectedEmail reads the domain of an address', t => {
+  t.true(isRejectedEmail('someone@yopmail.com'))
+  t.true(isRejectedEmail(`someone@yopmail${FULLWIDTH_DOT}com`))
+  t.true(isRejectedEmail(`someone@yo${SOFT_HYPHEN}pmail.com`))
+  t.true(isRejectedEmail('"a@microlink.io"@yopmail.com'))
+  t.false(isRejectedEmail('kiko@microlink.io'))
+  t.false(isRejectedEmail('not-an-email'))
 })
 
 test('createAbusive uses only the provided dataset', t => {
-  const abusive = createAbusive({ dataset: new Set(['Corp-Mail.example.']) })
-  t.true(abusive.isFreeEmail('someone@corp-mail.example'))
-  t.true(abusive.isFreeEmailDomain('sub.corp-mail.example'))
-  t.false(abusive.isFreeEmail('someone@gmail.com'))
+  const abusive = createAbusive({
+    rejectedDomains: new Set(['Corp-Mail.example.'])
+  })
+  t.true(abusive.isRejectedEmail('someone@corp-mail.example'))
+  t.true(abusive.isRejectedDomain('sub.corp-mail.example'))
+  t.false(abusive.isRejectedEmail('someone@gmail.com'))
 })
 
 test('createAbusive validates its options', t => {
-  for (const invalid of [undefined, null, 42, 'gmail.com', {}]) {
+  for (const invalid of [null, 42, 'gmail.com', {}]) {
     t.throws(
-      () => createAbusive({ dataset: invalid }),
-      { instanceOf: TypeError, message: /dataset/ },
+      () => createAbusive({ rejectedDomains: invalid }),
+      { instanceOf: TypeError, message: /rejectedDomains/ },
       String(invalid)
     )
   }
-  t.throws(() => createAbusive(), { instanceOf: TypeError })
-  t.throws(() => createAbusive({ dataset, lookup: [] }), {
+  t.throws(() => createAbusive({ sibling: { lookup: [] } }), {
     instanceOf: TypeError,
-    message: /lookup/
+    message: /sibling\.lookup/
   })
-  for (const invalid of [null, -1, 1.5, Number.NaN, '2']) {
-    t.throws(
-      () => createAbusive({ dataset, limit: invalid }),
-      { instanceOf: TypeError, message: /limit/ },
-      String(invalid)
-    )
-  }
   for (const invalid of [0, -1, 1.5, '2', null]) {
     t.throws(
-      () => createAbusive({ dataset, minSiblings: invalid }),
-      { instanceOf: TypeError, message: /minSiblings/ },
+      () => createAbusive({ sibling: { min: invalid } }),
+      { instanceOf: TypeError, message: /sibling\.min/ },
       String(invalid)
     )
   }
@@ -196,7 +189,10 @@ test('findSibling returns the first registered sibling', async t => {
     'derek1@gmail.com',
     'derek2@gmail.com'
   )
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   t.is(await findSibling('derek3@gmail.com'), 'derek1@gmail.com')
   t.is(await findSibling('jane@gmail.com'), null)
   t.is(await findSibling('derek1@gmail.com'), 'derek2@gmail.com')
@@ -204,7 +200,10 @@ test('findSibling returns the first registered sibling', async t => {
 
 test('findSibling passes the canonical domain and a keyword to the lookup', async t => {
   const { targets, lookup } = recordingLookup()
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   await findSibling('Destek6@AramaMotoruKayit.COM.')
   await findSibling('derek.smithson7@gmail.com')
   await findSibling('derek+promotions@gmail.com')
@@ -233,15 +232,20 @@ test('findSibling passes the canonical domain and a keyword to the lookup', asyn
 
 test('findSibling skips lookup entries that are not strings', async t => {
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: () => [{ email: 'destek@acme.com' }, 42, 'destek@acme.com']
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: () => [{ email: 'destek@acme.com' }, 42, 'destek@acme.com']
+    }
   })
   t.is(await findSibling('destek6@acme.com'), 'destek@acme.com')
 })
 
 test('findSibling still matches when format characters hide the mailbox', async t => {
   const { targets, lookup } = recordingLookup('destek@acme.com')
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   t.is(
     await findSibling(`destek${LEFT_TO_RIGHT_MARK}6@acme.com`),
     'destek@acme.com'
@@ -253,22 +257,22 @@ test('findSibling reads sync, async and promised iterables', async t => {
   const email = 'destek6@acme.com'
   t.is(
     await createAbusive({
-      dataset,
-      lookup: () => ['destek@acme.com']
+      rejectedDomains: dataset,
+      sibling: { lookup: () => ['destek@acme.com'] }
     }).findSibling(email),
     'destek@acme.com'
   )
   t.is(
     await createAbusive({
-      dataset,
-      lookup: () => asyncEmails('destek@acme.com')
+      rejectedDomains: dataset,
+      sibling: { lookup: () => asyncEmails('destek@acme.com') }
     }).findSibling(email),
     'destek@acme.com'
   )
   t.is(
     await createAbusive({
-      dataset,
-      lookup: async () => ['destek@acme.com']
+      rejectedDomains: dataset,
+      sibling: { lookup: async () => ['destek@acme.com'] }
     }).findSibling(email),
     'destek@acme.com'
   )
@@ -276,7 +280,10 @@ test('findSibling reads sync, async and promised iterables', async t => {
 
 test('findSibling never looks up what cannot be safely queried or matched', async t => {
   const { targets, lookup } = recordingLookup('destek@acme.com')
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   const unsafe = [
     'destek1@acme".com',
     'destek1@acme',
@@ -298,39 +305,18 @@ test('findSibling never looks up what cannot be safely queried or matched', asyn
 
 test('findSibling without a lookup rejects', async t => {
   await t.throwsAsync(
-    createAbusive({ dataset }).findSibling('destek1@acme.com'),
+    createAbusive({ rejectedDomains: dataset }).findSibling('destek1@acme.com'),
     { instanceOf: TypeError, message: /lookup/ }
-  )
-})
-
-test('findSibling stops after `limit` addresses', async t => {
-  const strangers = Array.from({ length: 500 }, (_, index) =>
-    `person${index}x@big.com`.replace(/\d/g, digit => 'abcdefghij'[digit])
-  )
-  const lookup = () => asyncEmails(...strangers, 'destek@big.com')
-  t.is(
-    await createAbusive({ dataset, lookup, limit: 500 }).findSibling(
-      'destek1@big.com'
-    ),
-    null
-  )
-  t.is(
-    await createAbusive({ dataset, lookup, limit: 501 }).findSibling(
-      'destek1@big.com'
-    ),
-    'destek@big.com'
-  )
-  t.is(
-    await createAbusive({ dataset, lookup }).findSibling('destek1@big.com'),
-    'destek@big.com'
   )
 })
 
 test('findSibling lets a lookup failure reach the caller', async t => {
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: () => {
-      throw new Error('store down')
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: () => {
+        throw new Error('store down')
+      }
     }
   })
   await t.throwsAsync(findSibling('destek1@acme.com'), {
@@ -345,10 +331,12 @@ test('findSibling looks up both Gmail domains, own domain first', async t => {
   }
   const targets = []
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: target => {
-      targets.push(target.domain)
-      return registered[target.domain]
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: target => {
+        targets.push(target.domain)
+        return registered[target.domain]
+      }
     }
   })
   t.is(await findSibling('d.erek@googlemail.com'), 'derek@gmail.com')
@@ -363,10 +351,11 @@ test('findSibling refuses a numbered variant only after `minSiblings` of them', 
     'derek2@gmail.com',
     'derek+old@gmail.com'
   ]
-  const siblingWith = minSiblings =>
-    createAbusive({ dataset, lookup, minSiblings }).findSibling(
-      'derek3@gmail.com'
-    )
+  const siblingWith = min =>
+    createAbusive({
+      rejectedDomains: dataset,
+      sibling: { lookup, min }
+    }).findSibling('derek3@gmail.com')
   t.is(await siblingWith(1), 'derek1@gmail.com')
   t.is(await siblingWith(2), 'derek2@gmail.com')
   t.is(await siblingWith(3), 'derek+old@gmail.com')
@@ -379,15 +368,17 @@ test('findSibling counts each numbered inbox once', async t => {
     'd.erek1@gmail.com',
     'derek1+promo@googlemail.com'
   ]
-  const { findSibling } = createAbusive({ dataset, lookup, minSiblings: 2 })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup, min: 2 }
+  })
   t.is(await findSibling('derek3@gmail.com'), null)
 })
 
 test('findSibling refuses the same inbox whatever `minSiblings` is', async t => {
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: () => ['derek@gmail.com'],
-    minSiblings: 10
+    rejectedDomains: dataset,
+    sibling: { lookup: () => ['derek@gmail.com'], min: 10 }
   })
   t.is(await findSibling('d.erek+3@gmail.com'), 'derek@gmail.com')
   t.is(await findSibling('derek3@gmail.com'), null)
@@ -396,11 +387,13 @@ test('findSibling refuses the same inbox whatever `minSiblings` is', async t => 
 test('findSibling reads `minSiblings` per candidate when it is a function', async t => {
   const seen = []
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: ({ domain }) => [`destek1@${domain}`],
-    minSiblings: candidate => {
-      seen.push(candidate)
-      return candidate.domain === 'gmail.com' ? 2 : 1
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: ({ domain }) => [`destek1@${domain}`],
+      min: candidate => {
+        seen.push(candidate)
+        return candidate.domain === 'gmail.com' ? 2 : 1
+      }
     }
   })
   t.is(await findSibling('destek2@acme.com'), 'destek1@acme.com')
@@ -417,7 +410,10 @@ test('findSibling finds the same inbox behind a short or letterless mailbox', as
     '12345@gmail.com',
     '12345@acme.com'
   )
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   t.is(await findSibling('ab1+x@gmail.com'), 'ab1@gmail.com')
   t.is(await findSibling('1.2.3.4.5@gmail.com'), '12345@gmail.com')
   t.is(await findSibling('12345+x@acme.com'), '12345@acme.com')
@@ -430,13 +426,12 @@ test('findSibling finds the same inbox behind a short or letterless mailbox', as
 test('findSibling rejects when a `minSiblings` function returns a bad value', async t => {
   for (const invalid of [undefined, Number.NaN, Infinity, 0, -1, null, '2']) {
     const { findSibling } = createAbusive({
-      dataset,
-      lookup: () => ['derek1@acme.com'],
-      minSiblings: () => invalid
+      rejectedDomains: dataset,
+      sibling: { lookup: () => ['derek1@acme.com'], min: () => invalid }
     })
     await t.throwsAsync(
       findSibling('derek3@acme.com'),
-      { instanceOf: TypeError, message: /minSiblings/ },
+      { instanceOf: TypeError, message: /sibling\.min/ },
       String(invalid)
     )
   }
@@ -445,31 +440,19 @@ test('findSibling rejects when a `minSiblings` function returns a bad value', as
 test('findSibling searches the other Gmail domain until `minSiblings` numbered inboxes exist', async t => {
   const domains = []
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: ({ domain }) => {
-      domains.push(domain)
-      return domain === 'gmail.com'
-        ? ['derek1@gmail.com']
-        : ['derek2@googlemail.com']
-    },
-    minSiblings: 2
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: ({ domain }) => {
+        domains.push(domain)
+        return domain === 'gmail.com'
+          ? ['derek1@gmail.com']
+          : ['derek2@googlemail.com']
+      },
+      min: 2
+    }
   })
   t.is(await findSibling('derek3@gmail.com'), 'derek2@googlemail.com')
   t.deepEqual(domains, ['gmail.com', 'googlemail.com'])
-})
-
-test('findSibling skips the second Gmail lookup once `limit` is spent', async t => {
-  const domains = []
-  const { findSibling } = createAbusive({
-    dataset,
-    lookup: ({ domain }) => {
-      domains.push(domain)
-      return ['jane@gmail.com']
-    },
-    limit: 1
-  })
-  t.is(await findSibling('derek+x@gmail.com'), null)
-  t.deepEqual(domains, ['gmail.com'])
 })
 
 test('isSibling reads counters next to any letter', t => {
@@ -492,50 +475,21 @@ test('isSibling ignores an empty inbox', t => {
   t.false(isSibling('...@gmail.com', '..@googlemail.com'))
 })
 
-test('findSibling never pulls more than `limit` addresses from the lookup', async t => {
-  let pulled = 0
-  async function * strangers () {
-    for (const name of ['jane', 'john', 'mary', 'paul', 'anna']) {
-      pulled++
-      yield `${name}@acme.com`
-    }
-  }
-  const { findSibling } = createAbusive({
-    dataset,
-    lookup: strangers,
-    limit: 3
-  })
-  t.is(await findSibling('destek1@acme.com'), null)
-  t.is(pulled, 3)
-})
-
 test('findSibling gives a `minSiblings` function a copy of the candidate', async t => {
   const targets = []
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: target => {
-      targets.push(target)
-      return []
-    },
-    minSiblings: candidate => {
-      candidate.domain = 'evil" OR 1=1'
-      return 1
+    rejectedDomains: dataset,
+    sibling: {
+      lookup: target => {
+        targets.push(target)
+        return []
+      },
+      min: candidate => {
+        candidate.domain = 'evil" OR 1=1'
+        return 1
+      }
     }
   })
   await findSibling('destek1@acme.com')
   t.deepEqual(targets, [{ domain: 'acme.com', keyword: 'destek' }])
-})
-
-test('findSibling never calls the lookup with a `limit` of 0', async t => {
-  const domains = []
-  const { findSibling } = createAbusive({
-    dataset,
-    lookup: ({ domain }) => {
-      domains.push(domain)
-      return ['derek@gmail.com']
-    },
-    limit: 0
-  })
-  t.is(await findSibling('derek+x@gmail.com'), null)
-  t.deepEqual(domains, [])
 })

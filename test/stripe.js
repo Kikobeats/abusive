@@ -87,7 +87,10 @@ test('accepts a function that returns the client, called on each lookup', async 
     return client
   })
   t.is(resolved, 0)
-  const { findSibling } = createAbusive({ dataset, lookup })
+  const { findSibling } = createAbusive({
+    rejectedDomains: dataset,
+    sibling: { lookup }
+  })
   t.is(await findSibling('destek6@acme.com'), 'destek@acme.com')
   t.is(resolved, 1)
 })
@@ -95,8 +98,8 @@ test('accepts a function that returns the client, called on each lookup', async 
 test('searches a fully dotted address by its collapsed mailbox', async t => {
   const client = fakeStripe('derek1@gmail.com')
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: stripeLookup(client)
+    rejectedDomains: dataset,
+    sibling: { lookup: stripeLookup(client) }
   })
   t.is(await findSibling('d.e.r.e.k@gmail.com'), 'derek1@gmail.com')
   t.deepEqual(client.calls, [
@@ -107,8 +110,8 @@ test('searches a fully dotted address by its collapsed mailbox', async t => {
 test('finds a Gmail sibling end to end', async t => {
   const client = fakeStripe('derek1@gmail.com')
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: stripeLookup(client)
+    rejectedDomains: dataset,
+    sibling: { lookup: stripeLookup(client) }
   })
   t.is(await findSibling('d.erek2+x@gmail.com'), 'derek1@gmail.com')
   t.deepEqual(client.calls, [
@@ -122,8 +125,8 @@ test('finds a sibling end to end', async t => {
     'destek@aramamotorukayit.com'
   )
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: stripeLookup(client)
+    rejectedDomains: dataset,
+    sibling: { lookup: stripeLookup(client) }
   })
   t.is(
     await findSibling('destek6@aramamotorukayit.com'),
@@ -135,8 +138,8 @@ test('finds a sibling end to end', async t => {
 test('a malicious domain never reaches the Stripe query', async t => {
   const client = fakeStripe('destek@acme.com')
   const { findSibling } = createAbusive({
-    dataset,
-    lookup: stripeLookup(client)
+    rejectedDomains: dataset,
+    sibling: { lookup: stripeLookup(client) }
   })
   t.is(await findSibling('destek1@acme.com" OR email~"x'), null)
   t.is(await findSibling('des"tek1@acme.com'), null)
@@ -146,4 +149,14 @@ test('a malicious domain never reaches the Stripe query', async t => {
 test('requires a client', t => {
   t.throws(() => stripeLookup(), { instanceOf: TypeError, message: /client/ })
   t.is(stripeLookup.stripeLookup, stripeLookup)
+})
+
+test('limit stops reading customers, and no more are yielded', async t => {
+  const read = []
+  const lookup = stripeLookup(
+    fakeStripe('a@acme.com', 'b@acme.com', 'c@acme.com'),
+    { limit: 2 }
+  )
+  for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) { read.push(email) }
+  t.deepEqual(read, ['a@acme.com', 'b@acme.com'])
 })
