@@ -162,11 +162,7 @@ const isHostname = domain => {
 }
 
 const signupDomainOf = domain => {
-  if (
-    typeof domain !== 'string' ||
-    domain.length > MAX_DOMAIN_LENGTH ||
-    INVALID_IN_DOMAIN.test(domain)
-  ) {
+  if (domain.length > MAX_DOMAIN_LENGTH || INVALID_IN_DOMAIN.test(domain)) {
     return null
   }
   const text = canonicalAddress(domain).replace(TRAILING_DOTS, '')
@@ -288,7 +284,6 @@ const createAbusive = ({
     createSignupScreen({
       ...signup,
       candidateOf: signupCandidateOf,
-      domainOf: signupDomainOf,
       isAlwaysShared: domain => isGmail(domain) || freeEmailDomains.has(domain)
     })
 

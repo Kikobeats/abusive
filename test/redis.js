@@ -112,12 +112,6 @@ test('read and remove use the prefix', async t => {
   ])
 })
 
-test('write overwrites with no expiry', async t => {
-  const client = fakeRedis()
-  await redisStore(client).write('blocked:a.com', '1')
-  t.deepEqual(client.calls[0], ['set', 'abusive:blocked:a.com', '1'])
-})
-
 test('countRecent keeps first-seen times and drops old members', async t => {
   const client = fakeRedis()
   const before = Date.now()

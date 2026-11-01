@@ -8,7 +8,6 @@ const DEFAULT_IP_MEMORY_MS = 30 * DAY_MS
 const DEFAULT_BURST_LIMIT = 3
 const DEFAULT_BURST_WINDOW_MS = 7 * DAY_MS
 const DEFAULT_BURST_BLOCK_MS = 90 * DAY_MS
-const BLOCKED_MARKER = '1'
 
 const BLOCKED_DOMAIN = 'blocked-domain'
 const DOMAIN_BURST = 'domain-burst'
@@ -31,7 +30,7 @@ const assertFunction = (name, value) => {
 }
 
 const assertStore = store => {
-  const methods = ['claim', 'read', 'write', 'countRecent', 'remove']
+  const methods = ['claim', 'read', 'countRecent', 'remove']
   if (
     store == null ||
     methods.some(name => typeof store[name] !== 'function')
@@ -47,7 +46,6 @@ const parentsOf = domain => {
 
 const createSignupScreen = ({
   candidateOf,
-  domainOf,
   isAlwaysShared,
   store,
   secret,
@@ -80,14 +78,6 @@ const createSignupScreen = ({
     return network === null ? null : `ip:${hash(network)}`
   }
 
-  const requireDomain = domain => {
-    const canonical = domainOf(domain)
-    if (canonical === null) {
-      throw new TypeError(`\`${domain}\` is not a domain that can be blocked`)
-    }
-    return canonical
-  }
-
   const blockOf = async domain => {
     const [own, ...parents] = await Promise.all(
       parentsOf(domain).map(parent => store.read(blockKey(parent)))
@@ -101,15 +91,6 @@ const createSignupScreen = ({
   const isRefusedByBlock = async (domain, isTrusted) => {
     const { own, inherited } = await blockOf(domain)
     return inherited || (own && !(await isTrusted()))
-  }
-
-  const blockDomain = async domain => {
-    await store.write(blockKey(requireDomain(domain)), BLOCKED_MARKER)
-  }
-
-  const unblockDomain = async domain => {
-    const canonical = requireDomain(domain)
-    await store.remove(blockKey(canonical), burstKey(canonical))
   }
 
   const notifyBlock = domain => {
@@ -217,15 +198,7 @@ const createSignupScreen = ({
     }
   }
 
-  const forgetSignup = async (email, context) => {
-    const candidate = candidateOf(email)
-    if (candidate === null) return
-    const key = ipKey(context?.ip)
-    const keys = key === null ? [] : [key]
-    await store.remove(admittedKey(candidate.identity), ...keys)
-  }
-
-  return { admitSignup, blockDomain, checkSignup, forgetSignup, unblockDomain }
+  return { admitSignup, checkSignup }
 }
 
 module.exports = createSignupScreen

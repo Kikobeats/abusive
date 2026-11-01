@@ -16,7 +16,6 @@ export type Lookup = (target: LookupTarget) =>
 export interface SignupStore {
   claim: (key: string, value: string, ttlMs?: number) => Promise<string>
   read: (key: string) => Promise<string | null | undefined>
-  write: (key: string, value: string) => Promise<unknown>
   countRecent: (key: string, member: string, windowMs: number) => Promise<number>
   remove: (...keys: string[]) => Promise<unknown>
 }
@@ -63,9 +62,6 @@ export interface Abusive {
 export interface AbusiveWithSignup extends Abusive {
   admitSignup: (email: string, context?: SignupContext) => Promise<SignupRefusal | null>
   checkSignup: (email: string) => Promise<{ reason: 'blocked-domain' | 'malformed' } | null>
-  blockDomain: (domain: string) => Promise<void>
-  unblockDomain: (domain: string) => Promise<void>
-  forgetSignup: (email: string, context?: SignupContext) => Promise<void>
 }
 
 export function parseEmail (email: string): EmailParts | null

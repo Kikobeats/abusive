@@ -26,7 +26,6 @@ const redisStore = (client, { prefix = DEFAULT_PREFIX } = {}) => {
       throw new Error(`could not claim \`${key}\``)
     },
     read: key => client.get(keyOf(key)),
-    write: (key, value) => client.set(keyOf(key), value),
     countRecent: async (key, member, windowMs) => {
       const now = Date.now()
       const replies = await client

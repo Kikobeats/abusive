@@ -22,10 +22,6 @@ const memoryStore = () => {
       return values.get(key)
     },
     read: async key => values.get(key) ?? null,
-    async write (key, value) {
-      values.set(key, value)
-      this.ttls.delete(key)
-    },
     countRecent: async (key, member) => {
       if (!sets.has(key)) sets.set(key, new Set())
       sets.get(key).add(member)
@@ -52,6 +48,8 @@ const screen = (signup = {}) => {
 }
 
 const IP = '203.0.113.7'
+const block = ({ values }, domain) =>
+  values.set(`blocked:${domainToASCII(domain)}`, '1')
 const MALFORMED = { reason: 'malformed' }
 
 test('the first signup from an IP is admitted', async t => {
@@ -143,25 +141,11 @@ test('the same address reloading does not count towards the burst', async t => {
 })
 
 test('a block covers subdomains, without blocking the parent', async t => {
-  const { blockDomain, checkSignup } = screen()
-  await blockDomain('simasamal.com')
+  const { checkSignup, store } = screen()
+  block(store, 'simasamal.com')
   t.is((await checkSignup('a@mail.simasamal.com')).reason, 'blocked-domain')
-  await blockDomain('sub.acme.com')
+  block(store, 'sub.acme.com')
   t.is(await checkSignup('a@acme.com'), null)
-})
-
-test('a block never expires', async t => {
-  const { blockDomain, store } = screen()
-  await blockDomain('simasamal.com')
-  t.is(store.ttls.get('blocked:simasamal.com'), undefined)
-})
-
-test('unblockDomain clears the block and its count', async t => {
-  const { admitSignup, unblockDomain } = screen({ burstLimit: 2 })
-  await admitSignup('a@acme.com')
-  await admitSignup('b@acme.com')
-  await unblockDomain('acme.com')
-  t.is(await admitSignup('c@acme.com'), null)
 })
 
 test('a shared domain has no burst rule but keeps the IP rule', async t => {
@@ -175,13 +159,13 @@ test('a shared domain has no burst rule but keeps the IP rule', async t => {
 })
 
 test('a trusted domain passes every rule', async t => {
-  const { admitSignup, blockDomain, checkSignup } = screen({
+  const { admitSignup, checkSignup, store } = screen({
     burstLimit: 1,
     isTrustedDomain: async domain => domain === 'voiceflow.com'
   })
   await admitSignup('someone@else.com', { ip: IP })
   t.is(await admitSignup('a@voiceflow.com', { ip: IP }), null)
-  await blockDomain('voiceflow.com')
+  block(store, 'voiceflow.com')
   t.is(await admitSignup('b@voiceflow.com', { ip: IP }), null)
   t.is(await checkSignup('c@voiceflow.com'), null)
 })
@@ -273,9 +257,9 @@ test('an admitted inbox comes back from any IP without taking it', async t => {
 })
 
 test('a block still refuses an admitted inbox', async t => {
-  const { admitSignup, blockDomain } = screen()
+  const { admitSignup, store } = screen()
   await admitSignup('jane@acme.com')
-  await blockDomain('acme.com')
+  block(store, 'acme.com')
   t.is((await admitSignup('jane@acme.com')).reason, 'blocked-domain')
 })
 
@@ -385,24 +369,23 @@ test('simultaneous re-spellings of one inbox give one account', async t => {
 })
 
 test('invisible characters in a domain cannot reach another domain', async t => {
-  const { admitSignup, blockDomain, checkSignup } = screen({
+  const { admitSignup, checkSignup } = screen({
     isTrustedDomain: domain => domain === domainToASCII('نامهای.ir')
   })
   const joined = 'a@نامه\u200cای.ir'
   t.deepEqual(await admitSignup(joined), MALFORMED)
   t.deepEqual(await checkSignup(joined), MALFORMED)
-  await t.throwsAsync(blockDomain('نامه\u200cای.ir'), { instanceOf: TypeError })
 })
 
 test('a block on a parent refuses subdomains without asking for trust', async t => {
   let asked = 0
-  const { admitSignup, blockDomain, checkSignup } = screen({
+  const { admitSignup, checkSignup, store } = screen({
     isTrustedDomain: () => {
       asked++
       return true
     }
   })
-  await blockDomain('acme.com')
+  block(store, 'acme.com')
   for (const email of ['a@r1.acme.com', 'a@r2.acme.com']) {
     t.is((await checkSignup(email)).reason, 'blocked-domain')
     t.is((await admitSignup(email)).reason, 'blocked-domain')
@@ -539,17 +522,6 @@ test('a hung onBlock never stalls the signup, and fires once', async t => {
   t.is(fired, 1)
 })
 
-test('a failing manual block keeps the previous block', async t => {
-  const store = memoryStore()
-  const { blockDomain, checkSignup } = screen({ store })
-  await blockDomain('acme.com')
-  store.write = async () => {
-    throw new Error('redis down')
-  }
-  await t.throwsAsync(blockDomain('acme.com'))
-  t.is((await checkSignup('a@acme.com')).reason, 'blocked-domain')
-})
-
 test('findSibling ignores an address too long to be real', async t => {
   const { findSibling } = createAbusive({
     dataset: [],
@@ -561,33 +533,20 @@ test('findSibling ignores an address too long to be real', async t => {
 })
 
 test('googlemail.com and gmail.com share a block', async t => {
-  const { blockDomain, checkSignup } = screen()
-  await blockDomain('gmail.com')
+  const { checkSignup, store } = screen()
+  block(store, 'gmail.com')
   t.is((await checkSignup('a@googlemail.com')).reason, 'blocked-domain')
 })
 
 test('an internationalised domain is one domain in both spellings', async t => {
-  const { blockDomain, checkSignup, admitSignup } = screen({ burstLimit: 2 })
+  const { checkSignup, admitSignup, store } = screen({ burstLimit: 2 })
   await admitSignup('a@münchen-test.de')
   t.is(
     (await admitSignup(`b@${domainToASCII('münchen-test.de')}`)).reason,
     'domain-burst'
   )
-  await blockDomain('münchen.de')
+  block(store, 'münchen.de')
   t.is((await checkSignup('a@xn--mnchen-3ya.de')).reason, 'blocked-domain')
-})
-
-test('manual block and unblock accept any spelling and refuse non-domains', async t => {
-  const { blockDomain, unblockDomain, checkSignup } = screen()
-  await blockDomain('Acme.COM.')
-  t.is((await checkSignup('a@acme.com')).reason, 'blocked-domain')
-  await unblockDomain('ACME.com')
-  t.is(await checkSignup('a@acme.com'), null)
-  await t.throwsAsync(blockDomain('localhost'), { instanceOf: TypeError })
-  await t.throwsAsync(unblockDomain('a b.com'), { instanceOf: TypeError })
-  await t.throwsAsync(blockDomain('evil.com/path'), { instanceOf: TypeError })
-  await t.throwsAsync(blockDomain('1.2.3.4'), { instanceOf: TypeError })
-  await t.throwsAsync(blockDomain(['evil.com']), { instanceOf: TypeError })
 })
 
 test('callbacks only ever receive a clean hostname', async t => {
@@ -638,8 +597,8 @@ test('a mailbox that is only a tag still counts as itself', async t => {
 })
 
 test('an address no real inbox could have is refused', async t => {
-  const { admitSignup, blockDomain, store } = screen()
-  await blockDomain('evil.com')
+  const { admitSignup, store } = screen()
+  block(store, 'evil.com')
   const addresses = [
     'nope',
     'a@evil.com,x@victim-corp.com',
@@ -714,9 +673,9 @@ test('a failed IP claim counts nothing', async t => {
   t.is(store.sets.size, 0)
 })
 
-test('a burst block expires and tells you, a manual block stays', async t => {
+test('a burst block expires and tells you', async t => {
   const blocked = []
-  const { admitSignup, blockDomain, store } = screen({
+  const { admitSignup, store } = screen({
     burstLimit: 1,
     burstBlockMs: 1000,
     onBlock: domain => {
@@ -727,8 +686,6 @@ test('a burst block expires and tells you, a manual block stays', async t => {
   t.is((await admitSignup('a@acme.com')).reason, 'domain-burst')
   t.deepEqual(blocked, ['acme.com'])
   t.is(store.ttls.get('blocked:acme.com'), 1000)
-  await blockDomain('acme.com')
-  t.is(store.ttls.get('blocked:acme.com'), undefined)
 })
 
 test('checkSignup cannot tell who is registered or trusted', async t => {
@@ -744,18 +701,6 @@ test('checkSignup cannot tell who is registered or trusted', async t => {
   ]) {
     t.is(await checkSignup(email), null)
   }
-})
-
-test('forgetSignup frees a refused person', async t => {
-  const { admitSignup, forgetSignup } = screen()
-  await admitSignup('owner@acme.com', { ip: IP })
-  t.is((await admitSignup('wrong@other.com', { ip: IP })).reason, 'same-ip')
-  await forgetSignup('wrong@other.com', { ip: IP })
-  t.is(await admitSignup('wrong@other.com', { ip: IP }), null)
-  await admitSignup('jane+1@third.com')
-  await forgetSignup('jane+1@third.com')
-  t.is(await admitSignup('jane+2@third.com'), null)
-  await forgetSignup('nope')
 })
 
 test('invalid signup options throw', t => {

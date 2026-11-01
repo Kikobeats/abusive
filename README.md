@@ -99,7 +99,7 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 |---|---|---|
 | `same-ip` | Another inbox already signed up from this IP. IPv6 addresses are compared by `/64` network. | `ipMemoryMs`, 30 days by default |
 | `domain-burst` | This is the `burstLimit`th different inbox on one domain within `burstWindowMs`, 3 in 7 days by default. | The domain is blocked for `burstBlockMs`, 90 days by default |
-| `blocked-domain` | The domain, or a parent of it, is blocked. | Until it expires or `unblockDomain` |
+| `blocked-domain` | The domain, or a parent of it, is blocked. | Until it expires or you remove it |
 | `same-inbox` | An admitted inbox comes back spelled differently, such as `jane+2@acme.com` after `jane+1@acme.com`. | `ipMemoryMs` |
 | `malformed` | The address is not one these rules can judge, such as `a@evil.com,x@victim.com`, or is over the limits: 320 characters, a 64 character mailbox, 8 domain labels. Most domains with emoji or zero-width joiners count too, unless written as punycode. | |
 
@@ -150,7 +150,7 @@ Both resolve `null` to allow, or `{ reason }` to refuse. A store failure rejects
 | `ipMemoryMs` | `number` | 30 days | How long an IP stays taken. |
 | `burstLimit` | `number` | `3` | Different inboxes on one domain that trigger the block. |
 | `burstWindowMs` | `number` | 7 days | The window they are counted in. |
-| `burstBlockMs` | `number` | 90 days | How long that block lasts. `blockDomain` is permanent instead. |
+| `burstBlockMs` | `number` | 90 days | How long that block lasts. |
 | `onBlock` | `function` | | Called with the domain when a burst blocks it. It is not awaited and its errors are ignored, so on serverless wrap it in your platform's `waitUntil`. Use it to look at the block, since three people at a university can trigger one. |
 | `isSharedDomain` | `function` | `() => false` | More domains shared by unrelated people. They skip the burst rule and keep the IP rule, as Gmail and every domain in `dataset` already do, matched exactly. No list is complete: add the providers your users have. |
 | `isTrustedDomain` | `function` | `() => false` | Domains that pass the IP, burst and block rules, such as those with a paying customer. It is only called when a rule would refuse, and never for a shared domain: one paying Gmail customer must not open the IP rule for all of Gmail. It does not cover subdomains, and a block on a parent refuses them outright. Trusted signups still count, so if trust lapses, the next new inbox can block the domain. |
@@ -163,19 +163,21 @@ Both resolve `null` to allow, or `{ reason }` to refuse. A store failure rejects
 |---|---|
 | `claim(key, value, ttlMs?)` | Atomically store `value` if `key` is free, and resolve whoever holds it. Without `ttlMs` it never expires. |
 | `read(key)` | Resolve the value or `null`. |
-| `write(key, value)` | Atomically overwrite the key, with no expiry. |
 | `countRecent(key, member, windowMs)` | Add `member`, keeping its first-seen time, and resolve how many members are inside the window. |
 | `remove(...keys)` | Delete the keys. |
 
 `claim` being atomic is what stops two signups at the same moment from both taking an IP.
 
-### Fixing a refusal by hand
+### Changing a block by hand
 
-| Method | Does |
-|---|---|
-| `.blockDomain(domain)` | Blocks the domain and its subdomains until unblocked. It rejects with a `TypeError` for anything that is not a domain, like `localhost`. There is no public suffix check, so do not pass `co.uk`. |
-| `.unblockDomain(domain)` | Removes the block and restarts its count. |
-| `.forgetSignup(email, { ip })` | Forgets an inbox and frees that IP, whoever holds it. Use it for someone wrongly refused as `same-ip` or `same-inbox`. It stays in the burst count until the window ends. For a `domain-burst` use `unblockDomain`. |
+Blocks are plain keys in your store, written without the secret. With `abusive/redis` and its default prefix:
+
+```
+SET abusive:blocked:example.com 1
+DEL abusive:blocked:example.com abusive:burst:example.com
+```
+
+The first blocks a domain and its subdomains permanently, and the second lifts a block and restarts its count. Use the lowercase ASCII hostname, punycode for internationalised domains, and `gmail.com` for `googlemail.com`. There is no public suffix check, so do not block `co.uk`.
 
 ### What gets through
 
@@ -236,7 +238,7 @@ Returns an object with the methods below. Create it once and reuse it: the datas
 | [`lookup`](#lookup) | `function` | | Returns the registered addresses at a domain. Required by `findSibling`. |
 | [`limit`](#limit) | `number` | `Infinity` | Maximum addresses read per `findSibling` call. |
 | [`minSiblings`](#minsiblings) | `number \| function` | `1` | Numbered siblings needed before one is reported. |
-| `signup` | `object` | | Enables `admitSignup`, `checkSignup`, `blockDomain`, `unblockDomain` and `forgetSignup`. See [Signup signals](#signup-signals). |
+| `signup` | `object` | | Enables `admitSignup` and `checkSignup`. See [Signup signals](#signup-signals). |
 
 #### dataset
 
