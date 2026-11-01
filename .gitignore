@@ -36,6 +36,11 @@ coverage
 .envrc
 
 ############################
+# Cover build scratch output
+############################
+docs/cover/scratch
+
+############################
 # Benchmark
 ############################
 benchmark-output.json
