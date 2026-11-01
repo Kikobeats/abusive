@@ -1,5 +1,7 @@
 'use strict'
 
+const createIpRule = require('./ip-rule')
+
 const INVISIBLE_CHARACTERS = /[\p{Cf}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu
 // NFKC folds U+FF0E to "." and U+FF61 to U+3002. U+3002 itself is unchanged.
 const LABEL_DOTS = /\u3002/g
@@ -17,6 +19,11 @@ const LETTER_RUNS = /[a-z]+/g
 const HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
 // Below this, a numbered mailbox like jo2 is shared by too many people.
 const MIN_MAILBOX_LENGTH = 3
+const MAX_ADDRESS_LENGTH = 320
+const SINGLE_ADDRESS = /^[^\s@]+@[^\s@]+$/
+const SIBLING = 'sibling'
+const IP = 'ip'
+const noop = () => {}
 const GMAIL_DOMAINS = ['gmail.com', 'googlemail.com']
 const SAME_INBOX = 'same-inbox'
 const NUMBERED = 'numbered'
@@ -40,16 +47,16 @@ const parseEmail = email => {
 
 const toParts = email => (typeof email === 'string' ? parseEmail(email) : email)
 
-const toDomainSet = dataset => {
+const toDomainSet = domains => {
   if (
-    dataset == null ||
-    typeof dataset === 'string' ||
-    typeof dataset[Symbol.iterator] !== 'function'
+    domains == null ||
+    typeof domains === 'string' ||
+    typeof domains[Symbol.iterator] !== 'function'
   ) {
-    throw new TypeError('`dataset` must be an iterable of free email domains')
+    throw new TypeError('`rejectedDomains` must be an iterable of domains')
   }
   return new Set(
-    Array.from(dataset, domain =>
+    Array.from(domains, domain =>
       canonicalAddress(domain).replace(TRAILING_DOTS, '')
     )
   )
@@ -128,64 +135,72 @@ const isSearchable = candidate =>
   SAFE_MAILBOX.test(candidate.local) &&
   collapsedInboxOf(candidate) !== ''
 
+const notifyQuietly = (hook, details) => {
+  try {
+    Promise.resolve(hook(details)).catch(noop)
+  } catch {}
+}
+
+const assertHook = (name, hook) => {
+  if (typeof hook !== 'function') {
+    throw new TypeError(`\`${name}\` must be a function`)
+  }
+}
+
 const assertMinSiblings = value => {
   if (!Number.isInteger(value) || value < 1) {
     throw new TypeError(
-      '`minSiblings` must be a positive integer or a function returning one'
+      '`sibling.min` must be a positive integer or a function returning one'
     )
   }
   return value
 }
 
-const toMinSiblings = minSiblings => {
-  if (typeof minSiblings === 'function') {
-    return candidate => assertMinSiblings(minSiblings({ ...candidate }))
+const toMinSiblings = min => {
+  if (typeof min === 'function') {
+    return candidate => assertMinSiblings(min({ ...candidate }))
   }
-  assertMinSiblings(minSiblings)
-  return () => minSiblings
-}
-
-const assertLimit = limit => {
-  if (limit !== Infinity && (!Number.isInteger(limit) || limit < 0)) {
-    throw new TypeError('`limit` must be a non-negative integer or Infinity')
-  }
-  return limit
+  assertMinSiblings(min)
+  return () => min
 }
 
 const createAbusive = ({
-  dataset,
-  lookup,
-  limit = Infinity,
-  minSiblings = 1
+  rejectedDomains = [],
+  sibling,
+  ip,
+  secret,
+  onAbusive = noop,
+  onError = noop
 } = {}) => {
-  const freeEmailDomains = toDomainSet(dataset)
-  if (lookup != null && typeof lookup !== 'function') {
-    throw new TypeError('`lookup` must be a function')
+  const rejected = toDomainSet(rejectedDomains)
+  const { lookup, min = 1 } = sibling ?? {}
+  if (sibling != null && typeof lookup !== 'function') {
+    throw new TypeError('`sibling.lookup` must be a function')
   }
-  const siblingsRequired = toMinSiblings(minSiblings)
-  assertLimit(limit)
+  const siblingsRequired = toMinSiblings(min)
+  assertHook('onAbusive', onAbusive)
+  assertHook('onError', onError)
+  const ipRule = ip == null ? null : createIpRule({ store: ip.store, secret })
 
-  const isFreeEmailDomain = domain => {
+  const isRejectedDomain = domain => {
     const labels = canonicalAddress(domain)
       .replace(TRAILING_DOTS, '')
       .split('.')
     return labels.some((_, index) =>
-      freeEmailDomains.has(labels.slice(index).join('.'))
+      rejected.has(labels.slice(index).join('.'))
     )
   }
 
-  const isFreeEmail = email => {
+  const isRejectedEmail = email => {
     const parts = parseEmail(email)
-    return parts !== null && isFreeEmailDomain(parts.domain)
+    return parts !== null && isRejectedDomain(parts.domain)
   }
 
   const registeredSibling = async candidate => {
     const keyword = keywordOf(candidate)
     const required = siblingsRequired(candidate)
     const numberedInboxes = new Set()
-    let read = 0
     for (const domain of domainsSharingInbox(candidate.domain)) {
-      if (read >= limit) return null
       for await (const existing of await lookup({ domain, keyword })) {
         const parts = typeof existing === 'string' ? parseEmail(existing) : null
         const relation = relationOf(candidate, parts)
@@ -196,22 +211,74 @@ const createAbusive = ({
           )
           if (numberedInboxes.size >= required) return existing
         }
-        if (++read >= limit) return null
       }
     }
     return null
   }
 
+  const siblingOf = candidate =>
+    isSearchable(candidate) ? registeredSibling(candidate) : null
+
   const findSibling = async email => {
     if (lookup == null) {
-      throw new TypeError('`lookup` is required to find siblings')
+      throw new TypeError('`sibling.lookup` is required to find siblings')
     }
+    if (String(email).length > MAX_ADDRESS_LENGTH) return null
     const candidate = parseEmail(email)
-    if (candidate === null || !isSearchable(candidate)) return null
-    return registeredSibling(candidate)
+    return candidate === null ? null : siblingOf(candidate)
   }
 
-  return { findSibling, isFreeEmail, isFreeEmailDomain, isSibling, parseEmail }
+  const reportingFailure = async (email, rule) => {
+    try {
+      return await rule()
+    } catch (error) {
+      notifyQuietly(onError, { email, error })
+      return null
+    }
+  }
+
+  const reasonOf = async ({ email, parts, ip, verified }) => {
+    if (
+      lookup != null &&
+      (await reportingFailure(email, () => siblingOf(parts)))
+    ) {
+      return SIBLING
+    }
+    if (verified !== true || ipRule === null) return null
+    const address = `${parts.local}@${parts.domain}`
+    if (!SINGLE_ADDRESS.test(address)) return null
+    const isTaken = await reportingFailure(email, () =>
+      ipRule.isIpUsedByAnother(address, ip)
+    )
+    return isTaken ? IP : null
+  }
+
+  const isAbusive = async check => {
+    try {
+      const { email, ip, verified = false } = check ?? {}
+      if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
+        return false
+      }
+      const parts = parseEmail(email)
+      if (parts === null) return false
+      const reason = await reasonOf({ email, parts, ip, verified })
+      if (reason === null) return false
+      notifyQuietly(onAbusive, { email, domain: parts.domain, reason })
+      return true
+    } catch (error) {
+      notifyQuietly(onError, { error })
+      return false
+    }
+  }
+
+  return {
+    findSibling,
+    isAbusive,
+    isRejectedEmail,
+    isRejectedDomain,
+    isSibling,
+    parseEmail
+  }
 }
 
 module.exports = createAbusive

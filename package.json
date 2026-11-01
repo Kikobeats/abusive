@@ -1,6 +1,6 @@
 {
   "name": "abusive",
-  "description": "Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, plus free email providers",
+  "description": "Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers",
   "homepage": "https://github.com/kikobeats/abusive",
   "version": "1.1.0",
   "types": "src/index.d.ts",
@@ -13,6 +13,10 @@
     "./stripe": {
       "types": "./src/stripe.d.ts",
       "default": "./src/stripe.js"
+    },
+    "./redis": {
+      "types": "./src/redis.d.ts",
+      "default": "./src/redis.js"
     }
   },
   "author": {
@@ -58,6 +62,7 @@
     "free-email-domains": "latest",
     "git-authors-cli": "latest",
     "github-generate-release": "latest",
+    "ioredis": "latest",
     "nano-staged": "latest",
     "simple-git-hooks": "latest",
     "standard": "latest",

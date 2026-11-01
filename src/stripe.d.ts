@@ -8,6 +8,7 @@ export interface StripeCustomerSearch {
 
 export interface StripeLookupOptions {
   pageSize?: number
+  limit?: number
 }
 
 export function stripeLookup (
