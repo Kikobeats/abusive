@@ -612,7 +612,9 @@ test('a returning inbox cannot fire a block when trust lapses', async t => {
     burstLimit: 2,
     isTrustedDomain: () => trusted
   })
-  for (const local of ['a', 'b', 'c', 'd', 'e']) { await admitSignup(`${local}@acme.com`) }
+  for (const local of ['a', 'b', 'c', 'd', 'e']) {
+    await admitSignup(`${local}@acme.com`)
+  }
   trusted = false
   t.is(await admitSignup('a@acme.com'), null)
 })
@@ -667,6 +669,14 @@ test('an address no real inbox could have is refused', async t => {
     )
   }
   t.is(store.sets.size, 0)
+})
+
+test('whitespace inside the address is refused, around it is ignored', async t => {
+  const { admitSignup } = screen()
+  t.deepEqual(await admitSignup('a@ acme.com'), MALFORMED)
+  t.deepEqual(await admitSignup('a@\tacme.com'), MALFORMED)
+  t.is(await admitSignup(' a@acme.com '), null)
+  t.is(await admitSignup('a@acme.com'), null)
 })
 
 test('internationalised mailboxes and domains are allowed', async t => {

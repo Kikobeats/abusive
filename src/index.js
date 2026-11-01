@@ -28,7 +28,7 @@ const MIN_DOMAIN_LABELS = 2
 const MAX_DOMAIN_LABELS = 8
 const HOSTNAME_LABEL = /^[a-z0-9-]+$/
 const LETTER_ASCII = /[a-z]/
-const FORMAT_CHARACTER = /\p{Cf}/u
+const INVALID_IN_DOMAIN = /[\p{Cf}\s]/u
 const DOMAIN_CHARACTERS =
   /^[\p{L}\p{N}\p{M}\u00B7\u0375\u05F3\u05F4\u30FB.-]+$/u
 const LOCAL_CHARACTERS = /^[\p{L}\p{N}\p{M}!#$%&'*+/=?^_`{|}~.-]+$/u
@@ -165,7 +165,7 @@ const signupDomainOf = domain => {
   if (
     typeof domain !== 'string' ||
     domain.length > MAX_DOMAIN_LENGTH ||
-    FORMAT_CHARACTER.test(domain)
+    INVALID_IN_DOMAIN.test(domain)
   ) {
     return null
   }
@@ -176,8 +176,11 @@ const signupDomainOf = domain => {
 }
 
 const signupCandidateOf = email => {
-  if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) { return null }
-  const parts = parseEmail(email)
+  if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
+    return null
+  }
+  const address = email.trim()
+  const parts = parseEmail(address)
   if (
     parts === null ||
     parts.local.length > MAX_LOCAL_LENGTH ||
@@ -185,7 +188,7 @@ const signupCandidateOf = email => {
   ) {
     return null
   }
-  const domain = signupDomainOf(email.slice(email.lastIndexOf('@') + 1))
+  const domain = signupDomainOf(address.slice(address.lastIndexOf('@') + 1))
   if (domain === null) return null
   const inbox = inboxOf({ local: parts.local, domain }) || parts.local
   return {
