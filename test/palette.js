@@ -149,3 +149,31 @@ test('no colour in the cover shader leans green', t => {
     )
   }
 })
+
+const ruleBody = (css, selector) => {
+  const start = css.indexOf(`${selector} {`)
+  return css.slice(start, css.indexOf('}', start))
+}
+
+test('the search placeholder is readable, because it is the only label', t => {
+  const token = ruleBody(
+    stylesheet,
+    '.sidebar .search input::placeholder'
+  ).match(/color: var\((--[\w-]+)\)/)[1]
+  t.true(
+    READABLE_PAIRS.some(
+      ([text, background]) => text === token && background === '--surface-color'
+    ),
+    `${token} is not held to AA on the search field`
+  )
+})
+
+test('the GitHub corner does not wave under reduced motion', t => {
+  const reducedMotion = stylesheet.slice(
+    stylesheet.indexOf('@media (prefers-reduced-motion: reduce)')
+  )
+  t.regex(
+    ruleBody(reducedMotion, '.github-corner:hover .octo-arm'),
+    /animation: none/
+  )
+})

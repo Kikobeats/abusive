@@ -774,6 +774,10 @@ body:not(.sticky) .sidebar {
   main > .content {
     transition: none;
   }
+
+  .github-corner:hover .octo-arm {
+    animation: none;
+  }
 }
 
 @media print {
@@ -810,7 +814,7 @@ body:not(.sticky) .sidebar {
 }
 
 .sidebar .search input::placeholder {
-  color: var(--subtle-color);
+  color: var(--muted-color);
 }
 
 .sidebar .search input:focus {

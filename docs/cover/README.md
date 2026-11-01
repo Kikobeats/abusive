@@ -15,7 +15,7 @@ The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh)
 
 ## Rebuild
 
-`shaders.js`, `atlas.png`, and `fallback-*.webp` are generated and committed, since GitHub Pages runs no build. After changing the shader or the scene:
+The build needs Node.js 20.9 or newer because of sharp. The library itself stays on Node.js 18. `shaders.js`, `atlas.png`, and `fallback-*.webp` are generated and committed, since GitHub Pages runs no build. After changing the shader or the scene:
 
 ```bash
 $ cd docs/cover

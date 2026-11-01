@@ -12,7 +12,7 @@ The abusive mark is two identical rings in a blue gradient, the second struck by
 
 ## Rebuild
 
-The assets are generated and committed, since GitHub Pages runs no build. After changing `mark.js` or `banner.js`:
+The build needs Node.js 20.9 or newer because of sharp. The library itself stays on Node.js 18. The assets are generated and committed, since GitHub Pages runs no build. After changing `mark.js` or `banner.js`:
 
 ```bash
 $ cd docs/brand

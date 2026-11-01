@@ -39,9 +39,14 @@ start().catch(error =>
   showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
 )
 
+let stopRendering = () => {}
+
+const hasFailed = () => cover.dataset.mode === 'fallback'
+
 function showFallback (reason) {
   cover.dataset.mode = 'fallback'
   cover.dataset.reason = reason
+  stopRendering()
 }
 
 function wantsFallback () {
@@ -117,6 +122,7 @@ async function start () {
     timing ? { requiredFeatures: ['timestamp-query'] } : undefined
   )
   gpu.onError?.(error => showFallback(`gpu-error: ${error?.code ?? error}`))
+  gpu.lost.then(({ reason }) => showFallback(`device-lost: ${reason}`))
 
   const canvasSurface = vgpu.surface(gpu, canvas, { dpr: DPR_RANGE })
   const state = createState()
@@ -158,13 +164,16 @@ async function start () {
     )
     if (firstFrame) {
       firstFrame = false
-      window.requestAnimationFrame(() => (cover.dataset.mode = 'live'))
+      window.requestAnimationFrame(() => {
+        if (!hasFailed()) cover.dataset.mode = 'live'
+      })
     }
   }
 
   let onScreen = true
   const sync = () => {
-    const run = onScreen && document.visibilityState === 'visible'
+    const run =
+      !hasFailed() && onScreen && document.visibilityState === 'visible'
     if (run && !loop) {
       last = 0
       loop = vgpu.frameLoop(gpu, tick)
@@ -179,6 +188,7 @@ async function start () {
     sync()
   }).observe(cover)
   document.addEventListener('visibilitychange', sync)
+  stopRendering = sync
   sync()
 }
 

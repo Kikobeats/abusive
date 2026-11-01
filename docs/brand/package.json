@@ -1,6 +1,9 @@
 {
   "name": "abusive-brand",
   "private": true,
+  "engines": {
+    "node": ">= 20.9"
+  },
   "type": "module",
   "scripts": {
     "build": "node build.mjs"
