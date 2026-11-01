@@ -151,12 +151,24 @@ test('requires a client', t => {
   t.is(stripeLookup.stripeLookup, stripeLookup)
 })
 
+test('without a limit every customer is read', async t => {
+  const emails = Array.from({ length: 150 }, (_, index) => `a${index}@acme.com`)
+  const read = []
+  const lookup = stripeLookup(fakeStripe(...emails))
+  for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) {
+    read.push(email)
+  }
+  t.is(read.length, 150)
+})
+
 test('limit stops reading customers, and no more are yielded', async t => {
   const read = []
   const lookup = stripeLookup(
     fakeStripe('a@acme.com', 'b@acme.com', 'c@acme.com'),
     { limit: 2 }
   )
-  for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) { read.push(email) }
+  for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) {
+    read.push(email)
+  }
   t.deepEqual(read, ['a@acme.com', 'b@acme.com'])
 })

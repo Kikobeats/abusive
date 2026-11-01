@@ -77,11 +77,12 @@ test('a different IP is not abusive', async t => {
 })
 
 test('a missing or malformed IP skips the rule and stores nothing', async t => {
-  const { isAbusive, store } = abusive()
+  const { isAbusive, store, errors } = abusive()
   for (const ip of [undefined, null, '', 'not-an-ip', '999.1.1.1']) {
     t.false(await isAbusive({ email: 'a@acme.com', ip, verified: true }))
   }
   t.is(store.values.size, 0)
+  t.deepEqual(errors, [])
 })
 
 test('only a verified address takes an IP or is judged by it', async t => {
@@ -132,14 +133,41 @@ test('a sibling is abusive before it can take an IP, verified or not', async t =
   t.deepEqual(reasons, ['sibling', 'sibling'])
 })
 
-test('without a store it only looks for siblings', async t => {
+test('without a store it only looks for siblings, and that is no error', async t => {
   const lookup = async function * () {
     yield 'destek@acme.com'
   }
-  const { isAbusive } = createAbusive({ sibling: { lookup } })
+  const errors = []
+  const { isAbusive } = createAbusive({
+    sibling: { lookup },
+    onError: ({ error }) => errors.push(error)
+  })
   t.true(await isAbusive({ email: 'destek6@acme.com', verified: true }))
   t.false(await isAbusive({ email: 'jane@acme.com', ip: IP, verified: true }))
   t.false(await isAbusive({ email: 'other@acme.com', ip: IP, verified: true }))
+  t.deepEqual(errors, [])
+})
+
+test('without a lookup it only applies the IP rule, and that is no error', async t => {
+  const { signup, errors } = abusive()
+  await signup('a@acme.com')
+  t.true(await signup('b@acme.com'))
+  t.deepEqual(errors, [])
+})
+
+test('a failed check tells onError which address it was', async t => {
+  const seen = []
+  const failure = new Error('stripe down')
+  const { isAbusive } = createAbusive({
+    sibling: {
+      lookup: () => {
+        throw failure
+      }
+    },
+    onError: details => seen.push(details)
+  })
+  await isAbusive({ email: 'jane@acme.com' })
+  t.deepEqual(seen, [{ email: 'jane@acme.com', error: failure }])
 })
 
 test('a failed check is not abusive, is reported and skips nothing', async t => {
@@ -176,6 +204,7 @@ test('it never rejects, whatever it is given', async t => {
   ]) {
     t.false(await isAbusive(check))
   }
+  t.false(await isAbusive({ email: 'nope', ip: IP, verified: true }))
   t.false(
     await isAbusive({
       get email () {
@@ -215,6 +244,8 @@ test('invalid options throw', t => {
     [{ onAbusive: 1 }, /onAbusive/],
     [{ onError: 1 }, /onError/],
     [{ ip: {} }, /ip\.store/],
+    [{ ip: false }, /ip\.store/],
+    [{ ip: 7 }, /ip\.store/],
     [{ ip: { store: {} } }, /ip\.store/],
     [{ secret: '' }, /secret/],
     [{ secret: undefined }, /secret/],

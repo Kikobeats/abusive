@@ -306,7 +306,7 @@ test('findSibling never looks up what cannot be safely queried or matched', asyn
 test('findSibling without a lookup rejects', async t => {
   await t.throwsAsync(
     createAbusive({ rejectedDomains: dataset }).findSibling('destek1@acme.com'),
-    { instanceOf: TypeError, message: /lookup/ }
+    { instanceOf: TypeError, message: /`sibling\.lookup` is required/ }
   )
 })
 

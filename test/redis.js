@@ -57,11 +57,13 @@ test('claim tries again when the holder lets go between the two reads', async t 
 })
 
 test('claim never pretends to hold a key it could not store', async t => {
-  const client = fakeRedis()
-  client.set = async () => null
-  await t.throwsAsync(redisStore(client).claim('ip:a', 'jane'), {
-    message: /could not claim/
-  })
+  for (const reply of [null, undefined, 'QUEUED']) {
+    const client = fakeRedis()
+    client.set = async () => reply
+    await t.throwsAsync(redisStore(client).claim('ip:a', 'jane'), {
+      message: /could not claim/
+    })
+  }
 })
 
 test('the client can come from a function, resolved on each claim', async t => {
@@ -85,6 +87,16 @@ test('timeoutMs rejects instead of hanging on a stalled Redis', async t => {
   const stalled = { set: () => new Promise(() => {}) }
   const store = redisStore(stalled, { timeoutMs: 10 })
   await t.throwsAsync(store.claim('k', 'v'), { message: /timed out/ })
+})
+
+test('without timeoutMs a slow Redis is waited for', async t => {
+  const client = fakeRedis()
+  const set = client.set
+  client.set = async (...args) => {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    return set(...args)
+  }
+  t.is(await redisStore(client).claim('k', 'v'), 'v')
 })
 
 test('timeoutMs does not get in the way of a working Redis', async t => {
