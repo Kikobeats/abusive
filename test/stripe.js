@@ -177,6 +177,25 @@ test('the smallest limit and an explicit Infinity read customers', async t => {
   }
 })
 
+test('limit never asks Stripe for one customer more', async t => {
+  let pulled = 0
+  const client = {
+    customers: {
+      search: async function * () {
+        for (const email of ['a@acme.com', 'b@acme.com', 'c@acme.com']) {
+          pulled++
+          yield { email }
+        }
+      }
+    }
+  }
+  const lookup = stripeLookup(client, { limit: 2 })
+  for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) {
+    t.truthy(email)
+  }
+  t.is(pulled, 2)
+})
+
 test('without a limit every customer is read', async t => {
   const emails = Array.from({ length: 150 }, (_, index) => `a${index}@acme.com`)
   const read = []

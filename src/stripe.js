@@ -26,8 +26,8 @@ const stripeLookup = (
       query,
       limit: pageSize
     })) {
-      if (read++ >= limit) return
       yield customer.email
+      if (++read >= limit) return
     }
   }
 }
