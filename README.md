@@ -89,7 +89,7 @@ Two different addresses at the same domain are **siblings** in one of two ways:
 | `jane@gmail.com` | `john@gmail.com` | no, different mailbox |
 | `destek1@sub.acme.com` | `destek@acme.com` | no, different domain |
 
-A numbered address is a different inbox, so it can belong to a different person: `derek84@gmail.com` and `derek@gmail.com` may be two Dereks. On a large provider, set [minSiblings](#siblingmin) to `2`: `derek3@` is refused once `derek1@` and `derek2@` exist, while a single `derek@` lets `derek84@` in.
+A numbered address is a different inbox, so it can belong to a different person: `derek84@gmail.com` and `derek@gmail.com` may be two Dereks. On a large provider, set [`sibling.min`](#siblingmin) to `2`: `derek3@` is refused once `derek1@` and `derek2@` exist, while a single `derek@` lets `derek84@` in.
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
@@ -181,7 +181,7 @@ Returns the addresses already registered at `domain`.
 
 - `domain` is canonical and always a plain hostname (`a-z`, `0-9`, `-` and dots).
 - `keyword` is a fragment most siblings contain, so you can narrow a large domain such as `gmail.com`. Returning every address at `domain` and ignoring `keyword` is always correct, just slower. How it is picked is in [Edge cases](#edge-cases).
-- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `sibling.min`) or when `options.limit` is reached.
+- It is called for each domain that shares the candidate's inbox, the candidate's own domain first: once for most domains, and up to twice for `gmail.com` and `googlemail.com`. The second call is skipped when the first one already qualifies (a same-inbox sibling, or enough numbered inboxes to reach `sibling.min`).
 - Both arguments are safe to put in a query: `lookup` is never called for a malformed address, for one with characters outside `a-z`, `0-9`, `.`, `_`, `+` and `-`, or for one whose inbox is only separators. `keyword` is never empty.
 - Entries that are not strings are skipped. An error it throws rejects `findSibling`; deciding whether to fail open is up to you.
 
