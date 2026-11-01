@@ -101,18 +101,18 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 | `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. If it is your proxy's address, everyone after the first signup is refused. |
 | `verified` | `true` once the address is verified, for an account you have not accepted yet. Only then is the IP rule applied and the IP taken, so an endpoint anyone can call cannot take one. Defaults to `false`. |
 
-It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken for the store's TTL, whether or not that account still exists.
+It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
 
 It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs`, as above, and a timeout on your lookup's client.
 
 - **Addresses are compared as written,** after lowercasing and Unicode folding. `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
-- **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception.
+- **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception. Providers also reassign IPs, so with no `ttlMs` a stranger can inherit a used one.
 - **An address with two `@` or with whitespace** never takes an IP or is judged by it, so a host's bad input cannot hold one.
 - **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
 
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set(key, value, 'PX', ms, 'NX')` and `get`, or a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit: [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error, and `@upstash/redis` fails every check. Use a custom store with those. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken, 30 days by default. Both must be positive integers, and `timeoutMs` at most 2147483647, or `redisStore` throws. To keep IPs somewhere else, pass an object with one method:
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set(key, value, 'NX')`, or `set(key, value, 'PX', ms, 'NX')` with `ttlMs`, and `get`, or a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit: [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error, and `@upstash/redis` fails every check. Use a custom store with those. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken. Without it, an IP stays taken forever. Both must be positive integers, and `timeoutMs` at most 2147483647, or `redisStore` throws. To keep IPs somewhere else, pass an object with one method:
 
 `claim(key, value)` atomically stores `value` if `key` is free, and resolves whoever holds it. Keys and values arrive hashed, and how long they last is up to the store. That being atomic is what stops two signups at the same moment from both taking an IP.
 

@@ -20,22 +20,15 @@ const fakeRedis = () => {
   }
 }
 
-test('claim sets only when absent, with its TTL and prefix', async t => {
+test('claim sets only when absent, with its prefix and no expiry', async t => {
   const client = fakeRedis()
   const store = redisStore(client)
   t.is(await store.claim('ip:a', 'jane'), 'jane')
-  t.deepEqual(client.calls[0], [
-    'set',
-    'abusive:ip:a',
-    'jane',
-    'PX',
-    30 * 24 * 60 * 60 * 1000,
-    'NX'
-  ])
+  t.deepEqual(client.calls[0], ['set', 'abusive:ip:a', 'jane', 'NX'])
   t.is(await store.claim('ip:a', 'john'), 'jane')
 })
 
-test('ttlMs replaces the 30 day default', async t => {
+test('ttlMs makes a claim expire', async t => {
   const client = fakeRedis()
   await redisStore(client, { ttlMs: 5 }).claim('k', 'v')
   t.deepEqual(client.calls[0], ['set', 'abusive:k', 'v', 'PX', 5, 'NX'])
@@ -131,7 +124,7 @@ test('an explicit undefined timeoutMs and ttlMs mean their defaults', async t =>
   const client = fakeRedis()
   const store = redisStore(client, { timeoutMs: undefined, ttlMs: undefined })
   await store.claim('k', 'v')
-  t.is(client.calls[0][4], 30 * 24 * 60 * 60 * 1000)
+  t.deepEqual(client.calls[0], ['set', 'abusive:k', 'v', 'NX'])
 })
 
 test('a ttlMs Redis would refuse throws', t => {

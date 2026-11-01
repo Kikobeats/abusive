@@ -8,7 +8,6 @@ const Redis = require('ioredis')
 const createAbusive = require('..')
 const redisStore = require('../src/redis')
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const ROUNDS = 100
 const SIMULTANEOUS_SIGNUPS = 20
 const CLOSED_PORT = 1
@@ -71,13 +70,12 @@ test('Redis holds nothing in the clear', async t => {
   t.regex(await client.get(keys[0]), /^[0-9a-f]{64}$/)
 })
 
-test('a claim lasts 30 days by default', async t => {
+test('a claim never expires by default', async t => {
   const ownPrefix = `${prefix}ttl:`
   const { signup } = signupsOn({ prefix: ownPrefix })
   await signup('jane@acme.com', '203.0.113.3')
   const [key] = await keysOf(ownPrefix)
-  const remaining = await client.pttl(key)
-  t.true(remaining > THIRTY_DAYS_MS - 60000 && remaining <= THIRTY_DAYS_MS)
+  t.is(await client.pttl(key), -1)
 })
 
 test('the IP is free again once ttlMs has passed', async t => {

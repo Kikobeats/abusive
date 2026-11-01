@@ -2,7 +2,6 @@
 
 const DEFAULT_PREFIX = 'abusive:'
 const CLAIM_ATTEMPTS = 5
-const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 // setTimeout turns anything else into a 1ms timer, failing every check.
 const MAX_TIMEOUT_MS = 2 ** 31 - 1
 
@@ -30,7 +29,7 @@ const withinTimeout = async (timeoutMs, work) => {
 
 const redisStore = (
   client,
-  { prefix = DEFAULT_PREFIX, timeoutMs, ttlMs = DEFAULT_TTL_MS } = {}
+  { prefix = DEFAULT_PREFIX, timeoutMs, ttlMs } = {}
 ) => {
   if (client == null) {
     throw new TypeError(
@@ -40,12 +39,15 @@ const redisStore = (
   if (timeoutMs !== undefined) {
     assertMilliseconds('timeoutMs', timeoutMs, MAX_TIMEOUT_MS)
   }
-  assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
+  if (ttlMs !== undefined) {
+    assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
+  }
+  const expiry = ttlMs === undefined ? [] : ['PX', ttlMs]
   const claim = async (key, value) => {
     const redis = typeof client === 'function' ? await client() : client
     const stored = `${prefix}${key}`
     for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
-      if ((await redis.set(stored, value, 'PX', ttlMs, 'NX')) === 'OK') {
+      if ((await redis.set(stored, value, ...expiry, 'NX')) === 'OK') {
         return value
       }
       const holder = await redis.get(stored)
