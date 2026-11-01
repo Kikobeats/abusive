@@ -13,20 +13,11 @@ export interface LookupTarget {
 export type Lookup = (target: LookupTarget) =>
   Iterable<MaybeEmail> | AsyncIterable<MaybeEmail> | Promise<Iterable<MaybeEmail>>
 
-export interface SignupStore {
-  claim: (key: string, value: string, ttlMs?: number) => Promise<string>
-  read: (key: string) => Promise<string | null | undefined>
-  countRecent: (key: string, member: string, windowMs: number) => Promise<number>
-  remove: (...keys: string[]) => Promise<unknown>
+export interface AbusiveStore {
+  claim: (key: string, value: string, ttlMs: number) => Promise<string>
 }
 
-export type AbusiveReason =
-  | 'blocked-domain'
-  | 'domain-burst'
-  | 'malformed'
-  | 'same-inbox'
-  | 'same-ip'
-  | 'sibling'
+export type AbusiveReason = 'same-ip' | 'sibling'
 
 export interface AbusiveCheck {
   email: string
@@ -39,16 +30,10 @@ export interface AbusiveOptions {
   lookup?: Lookup
   limit?: number
   minSiblings?: number | ((candidate: EmailParts) => number)
-  store?: SignupStore
+  store?: AbusiveStore
   secret?: string
   ipMemoryMs?: number
-  burstLimit?: number
-  burstWindowMs?: number
-  burstBlockMs?: number
-  isTrustedDomain?: (domain: string) => boolean | Promise<boolean>
-  isSharedDomain?: (domain: string) => boolean | Promise<boolean>
-  onBlock?: (domain: string) => unknown
-  onAbusive?: (details: { email: string, domain?: string, reason: AbusiveReason }) => unknown
+  onAbusive?: (details: { email: string, domain: string, reason: AbusiveReason }) => unknown
   onError?: (details: { email?: string, error: unknown }) => unknown
 }
 

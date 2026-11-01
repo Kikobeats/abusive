@@ -17,7 +17,7 @@ john1987@gmail.com   allowed: a year is not a counter
 - Refuses the next signup without banning the whole domain.
 - Tells the same inbox written another way apart from numbered variants that may be a different person.
 - Flags free and disposable email providers from the domain list you choose.
-- Refuses a second account from one IP and a burst of accounts on one domain, remembering them after the accounts are deleted.
+- Refuses a second account from one IP, remembering it after the first account is deleted.
 - Works with any user store: Stripe, SQL, or anything that can list emails by domain.
 - Zero dependencies, with TypeScript types included.
 
@@ -44,7 +44,7 @@ const { isAbusive } = require('abusive')({
   secret: process.env.ABUSIVE_SECRET
 })
 
-// Anyone can call this: it reads, and never writes.
+// Anyone can call this: it only looks for siblings.
 await isAbusive({ email: 'destek6@acme.com' }) // => true when destek@acme.com exists
 
 // Once the address is verified, for an account you have not accepted yet.
@@ -52,7 +52,7 @@ await isAbusive({ email: 'jane@gmail.com', ip, verified: true }) // => false
 await isAbusive({ email: 'john@gmail.com', ip, verified: true }) // => true, same IP
 ```
 
-`store` and `secret` are optional: without them `isAbusive` only looks for siblings.
+`store` and `secret` are optional: without them `isAbusive` only looks for siblings. `isFreeEmail` stays separate, because refusing free providers is your policy and not abuse.
 
 Keep the refusal message neutral. Saying that a similar account exists tells an attacker which addresses are registered.
 
@@ -93,86 +93,37 @@ A numbered address is a different inbox, so it can belong to a different person:
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
-## What isAbusive checks
-
-`findSibling` only sees addresses that look alike. Someone signing up as `azod738@gmail.com` and `waliullahshah965@gmail.com` from one machine, or with random mailboxes on a domain they own, passes it. With a `store`, `isAbusive` also catches those from where the request comes from and what you have already seen, and what it remembers is not tied to the account, so it outlives deleting one.
-
-| Reason | Abusive when | Needs | Lasts |
-|---|---|---|---|
-| `malformed` | The address is not one these rules can judge, such as `a@evil.com,x@victim.com`, or is over the limits: 320 characters, a 64 character mailbox, 8 domain labels. Most domains with emoji or zero-width joiners count too, unless written as punycode. | | |
-| `blocked-domain` | The domain, or a parent of it, is blocked. | `store` | Until it expires or you remove it |
-| `sibling` | `findSibling` finds one. | `lookup` | |
-| `same-ip` | Another inbox already signed up from this IP. IPv6 addresses are compared by `/64` network. | `store`, `verified` | `ipMemoryMs`, 30 days by default |
-| `same-inbox` | An admitted inbox comes back spelled differently, such as `jane+2@acme.com` after `jane+1@acme.com`. | `store`, `verified` | `ipMemoryMs` |
-| `domain-burst` | This is the `burstLimit`th different inbox on one domain within `burstWindowMs`, 3 in 7 days by default. | `store`, `verified` | The domain is blocked for `burstBlockMs`, 90 days by default |
-
-`isFreeEmail` stays separate, because refusing free providers is your policy and not abuse.
-
-### isAbusive({ email, ip, verified })
+## isAbusive({ email, ip, verified })
 
 | Argument | Description |
 |---|---|
 | `email` | The address. |
 | `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. |
-| `verified` | `true` once the address is verified, for an account you have not accepted yet. It applies every rule, takes the IP and counts the inbox. Defaults to `false`, which only reads, so an endpoint anyone can call cannot take an IP or block a domain. Its answer still shows whether a sibling exists or a domain is blocked, so rate limit that endpoint. |
+| `verified` | `true` once the address is verified, for an account you have not accepted yet. Only then is the IP rule applied and the IP taken, so an endpoint anyone can call cannot take one. Defaults to `false`. |
 
-It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A lock you hold around it is yours to fail closed: treating a lock timeout as allowed lets a flood of requests through. A store that hangs without failing makes it hang too, so give your client a command timeout, as above.
+It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken for `ipMemoryMs`, whether or not that account still exists.
 
-- **New accounts only.** Do not pass `verified` for accounts you already accepted. An admitted inbox passes again for `ipMemoryMs` without taking the new IP, but after that it counts as new.
-- **One call at a time per address.** Simultaneous verified calls for the same address can each take an IP, and one being refused can release what the other holds, so hold a lock per account around it.
-- **A race can refuse both.** Signups are judged against claims still in progress, so two arriving together can both be refused when the first is then refused too. Refusal is never permanent here: trying again gets the right answer.
-- **Blocks win.** A blocked domain refuses an admitted inbox too, so an abuser you deleted cannot return on it.
-- **One inbox, one account.** `jane+1@acme.com` then `jane+2@acme.com` is refused as `same-inbox`, and so is `j.ane@gmail.com` after `jane@gmail.com`.
-- **A refused signup takes nothing.** An address the IP rule refuses is not counted, even when it arrives at the same moment as the winner, and one the burst rule refuses gives its IP back. It does stay in the burst count until the window ends. If giving back fails, the refusal stands and `onError` is called, and that inbox passes as admitted for `ipMemoryMs`.
-- **Callbacks see clean hostnames.** `isTrustedDomain`, `isSharedDomain`, `onBlock` and `domain` in `onAbusive` only ever carry a lowercase ASCII hostname, safe to put in a query, or nothing when the address is `malformed`. Internationalised domains arrive as punycode. The `email` in `onAbusive` and `onError` is what you passed in, so escape it before showing it.
+It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store that hangs without failing makes it hang too, so give your client a command timeout, as above.
 
-Do not tell the person signing up why. It tells them what to change.
+- **Addresses are compared as written,** after lowercasing and Unicode folding. `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
+- **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception.
+- **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
 
 ### Options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `store` | `object` | | Where signals are kept. See [Store](#store). |
-| `secret` | `string` | required with `store` | HMAC key for IPs and addresses, neither of which is ever stored in the clear. Changing it forgets every IP and inbox, but an inbox already in the burst count counts twice until the window ends. Domains are stored as they are. |
+| `store` | `object` | | Keeps the IPs. See [Store](#store). |
+| `secret` | `string` | required with `store` | HMAC key for IPs and addresses, neither of which is ever stored in the clear. Changing it forgets every IP. |
 | `ipMemoryMs` | `number` | 30 days | How long an IP stays taken. |
-| `burstLimit` | `number` | `3` | Different inboxes on one domain that trigger the block. |
-| `burstWindowMs` | `number` | 7 days | The window they are counted in. |
-| `burstBlockMs` | `number` | 90 days | How long that block lasts. |
-| `onAbusive` | `function` | | Called with `{ email, domain, reason }` when `isAbusive` resolves `true`. Use it to log why. Its errors are ignored. |
+| `onAbusive` | `function` | | Called with `{ email, domain, reason }` when `isAbusive` resolves `true`, where `reason` is `sibling` or `same-ip`. Use it to log why. Its errors are ignored. The `email` and `domain` come from the input, so escape them before showing them. |
 | `onError` | `function` | | Called with `{ email, error }` when a check fails. Its errors are ignored. |
-| `onBlock` | `function` | | Called with the domain when a burst blocks it, or may have: a block that failed to confirm still calls it, unless reading the key shows it is absent. It is not awaited and its errors are ignored, so on serverless wrap it in your platform's `waitUntil`. Use it to look at the block, since three people at a university can trigger one. |
-| `isSharedDomain` | `function` | `() => false` | More domains shared by unrelated people. They skip the burst rule and keep the IP rule, as Gmail and every domain in `dataset` already do, matched exactly. No list is complete: add the providers your users have. |
-| `isTrustedDomain` | `function` | `() => false` | Domains that pass the IP, burst and block rules, such as those with a paying customer. It is only called when a rule would refuse, and never for a shared domain: one paying Gmail customer must not open the IP rule for all of Gmail. It does not cover subdomains, and a block on a parent refuses them outright. Trusted signups still count, so if trust lapses, the next new inbox can block the domain. |
 
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set`, `get`, `del` and `multi`. Keys start with `abusive:`, or the `prefix` option. To keep signals somewhere else, pass an object with:
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set` and `get`. Keys start with `abusive:`, or the `prefix` option. To keep IPs somewhere else, pass an object with one method:
 
-| Method | Must |
-|---|---|
-| `claim(key, value, ttlMs?)` | Atomically store `value` if `key` is free, and resolve whoever holds it. Without `ttlMs` it never expires. |
-| `read(key)` | Resolve the value or `null`. |
-| `countRecent(key, member, windowMs)` | Add `member`, keeping its first-seen time, and resolve how many members are inside the window. |
-| `remove(...keys)` | Delete the keys. |
-
-`claim` being atomic is what stops two signups at the same moment from both taking an IP.
-
-### Changing a block by hand
-
-Blocks are plain keys in your store, written without the secret. With `abusive/redis` and its default prefix:
-
-```
-SET abusive:blocked:example.com 1
-DEL abusive:blocked:example.com abusive:burst:example.com
-```
-
-The first blocks a domain and its subdomains permanently, and the second lifts a block and restarts its count. Use the lowercase ASCII hostname, punycode for internationalised domains, and `gmail.com` for `googlemail.com`. There is no public suffix check, so do not block `co.uk`.
-
-### What gets through
-
-- The first `burstLimit - 1` inboxes on a new domain, and random subdomains, since each is counted on its own.
-- Someone who changes IP between signups with a VPN or a mobile reconnect.
-- People behind one office or mobile carrier IP count as one signup: the second one is refused. Use `isTrustedDomain`, and give refused people a way to reach you.
+`claim(key, value, ttlMs)` atomically stores `value` if `key` is free, and resolves whoever holds it. That being atomic is what stops two signups at the same moment from both taking an IP.
 
 ## Lookups
 
@@ -227,7 +178,7 @@ Returns an object with the methods below. Create it once and reuse it: the datas
 | [`lookup`](#lookup) | `function` | | Returns the registered addresses at a domain. Required by `findSibling`. |
 | [`limit`](#limit) | `number` | `Infinity` | Maximum addresses read per `findSibling` call. |
 | [`minSiblings`](#minsiblings) | `number \| function` | `1` | Numbered siblings needed before one is reported. |
-| `store`, `secret` and more | | | Enable the signup rules. See [What isAbusive checks](#what-isabusive-checks). |
+| `store`, `secret` and more | | | Enable the IP rule. See [isAbusive](#isabusive-email-ip-verified-). |
 
 #### dataset
 

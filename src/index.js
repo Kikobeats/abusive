@@ -1,7 +1,6 @@
 'use strict'
 
-const { domainToASCII } = require('url')
-const createSignupScreen = require('./signup')
+const createIpRule = require('./ip-rule')
 
 const INVISIBLE_CHARACTERS = /[\p{Cf}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu
 // NFKC folds U+FF0E to "." and U+FF61 to U+3002. U+3002 itself is unchanged.
@@ -21,17 +20,9 @@ const HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
 // Below this, a numbered mailbox like jo2 is shared by too many people.
 const MIN_MAILBOX_LENGTH = 3
 const MAX_ADDRESS_LENGTH = 320
-const MAX_DOMAIN_LENGTH = 253
-const MAX_LOCAL_LENGTH = 64
-const MAX_LABEL_LENGTH = 63
-const MIN_DOMAIN_LABELS = 2
-const MAX_DOMAIN_LABELS = 8
-const HOSTNAME_LABEL = /^[a-z0-9-]+$/
-const LETTER_ASCII = /[a-z]/
-const INVALID_IN_DOMAIN = /[\p{Cf}\s]/u
-const DOMAIN_CHARACTERS =
-  /^[\p{L}\p{N}\p{M}\u00B7\u0375\u05F3\u05F4\u30FB.-]+$/u
-const LOCAL_CHARACTERS = /^[\p{L}\p{N}\p{M}!#$%&'*+/=?^_`{|}~.-]+$/u
+const SIBLING = 'sibling'
+const SAME_IP = 'same-ip'
+const noop = () => {}
 const GMAIL_DOMAINS = ['gmail.com', 'googlemail.com']
 const SAME_INBOX = 'same-inbox'
 const NUMBERED = 'numbered'
@@ -66,7 +57,7 @@ const toDomainSet = dataset => {
   return new Set(
     Array.from(dataset, domain =>
       canonicalAddress(domain).replace(TRAILING_DOTS, '')
-    ).flatMap(domain => [domain, domainToASCII(domain)])
+    )
   )
 }
 
@@ -143,65 +134,16 @@ const isSearchable = candidate =>
   SAFE_MAILBOX.test(candidate.local) &&
   collapsedInboxOf(candidate) !== ''
 
-const isDomainLabel = label =>
-  label.length >= 1 &&
-  label.length <= MAX_LABEL_LENGTH &&
-  HOSTNAME_LABEL.test(label) &&
-  !label.startsWith('-') &&
-  !label.endsWith('-')
-
-const isHostname = domain => {
-  const labels = domain.split('.')
-  return (
-    domain.length <= MAX_DOMAIN_LENGTH &&
-    labels.length >= MIN_DOMAIN_LABELS &&
-    labels.length <= MAX_DOMAIN_LABELS &&
-    labels.every(isDomainLabel) &&
-    LETTER_ASCII.test(labels.at(-1))
-  )
-}
-
-const signupDomainOf = domain => {
-  if (domain.length > MAX_DOMAIN_LENGTH || INVALID_IN_DOMAIN.test(domain)) {
-    return null
-  }
-  const text = canonicalAddress(domain).replace(TRAILING_DOTS, '')
-  if (!DOMAIN_CHARACTERS.test(text)) return null
-  const ascii = inboxDomainOf(domainToASCII(text))
-  return isHostname(ascii) ? ascii : null
-}
-
-const signupCandidateOf = email => {
-  if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
-    return null
-  }
-  const address = email.trim()
-  const parts = parseEmail(address)
-  if (
-    parts === null ||
-    parts.local.length > MAX_LOCAL_LENGTH ||
-    !LOCAL_CHARACTERS.test(parts.local)
-  ) {
-    return null
-  }
-  const domain = signupDomainOf(address.slice(address.lastIndexOf('@') + 1))
-  if (domain === null) return null
-  const inbox = inboxOf({ local: parts.local, domain }) || parts.local
-  return {
-    domain,
-    identity: `${inbox}@${domain}`,
-    spelling: `${parts.local}@${domainToASCII(parts.domain)}`
-  }
-}
-
-const SIBLING = 'sibling'
-const MALFORMED = 'malformed'
-const noop = () => {}
-
 const notifyQuietly = (hook, details) => {
   try {
     Promise.resolve(hook(details)).catch(noop)
   } catch {}
+}
+
+const assertHook = (name, hook) => {
+  if (typeof hook !== 'function') {
+    throw new TypeError(`\`${name}\` must be a function`)
+  }
 }
 
 const assertMinSiblings = value => {
@@ -233,10 +175,11 @@ const createAbusive = ({
   lookup,
   limit = Infinity,
   minSiblings = 1,
-  onAbusive = noop,
-  onError = noop,
   store,
-  ...signup
+  secret,
+  ipMemoryMs,
+  onAbusive = noop,
+  onError = noop
 } = {}) => {
   const freeEmailDomains = toDomainSet(dataset)
   if (lookup != null && typeof lookup !== 'function') {
@@ -244,6 +187,10 @@ const createAbusive = ({
   }
   const siblingsRequired = toMinSiblings(minSiblings)
   assertLimit(limit)
+  assertHook('onAbusive', onAbusive)
+  assertHook('onError', onError)
+  const ipRule =
+    store == null ? null : createIpRule({ store, secret, ipMemoryMs })
 
   const isFreeEmailDomain = domain => {
     const labels = canonicalAddress(domain)
@@ -292,55 +239,32 @@ const createAbusive = ({
     return registeredSibling(candidate)
   }
 
-  for (const [name, hook] of Object.entries({ onAbusive, onError })) {
-    if (typeof hook !== 'function') {
-      throw new TypeError(`\`${name}\` must be a function`)
-    }
-  }
-
-  const screen =
-    store == null
-      ? null
-      : createSignupScreen({
-        ...signup,
-        store,
-        isAlwaysShared: domain =>
-          isGmail(domain) || freeEmailDomains.has(domain)
-      })
-
-  const refusalOf = async (candidate, { email, ip, verified }) => {
-    if (candidate === null) return { reason: MALFORMED }
-    const report = error => notifyQuietly(onError, { email, error })
+  const reasonOf = async ({ email, parts, ip, verified }) => {
     const attempt = async rule => {
       try {
         return await rule()
       } catch (error) {
-        report(error)
+        notifyQuietly(onError, { email, error })
         return null
       }
     }
-    const refusal =
-      screen && (await attempt(() => screen.checkSignup(candidate)))
-    if (refusal) return refusal
-    if (lookup != null && (await attempt(() => findSibling(email)))) {
-      return { reason: SIBLING }
-    }
-    return verified === true && screen
-      ? attempt(() => screen.admitSignup(candidate, ip, report))
+    if (lookup != null && (await attempt(() => findSibling(email)))) { return SIBLING }
+    if (verified !== true || ipRule === null) return null
+    const address = `${parts.local}@${parts.domain}`
+    return (await attempt(() => ipRule.isIpUsedByAnother(address, ip)))
+      ? SAME_IP
       : null
   }
 
   const isAbusive = async check => {
     try {
       const { email, ip, verified = false } = check ?? {}
-      const candidate = signupCandidateOf(email)
-      const refusal = await refusalOf(candidate, { email, ip, verified })
-      if (refusal === null) return false
-      notifyQuietly(onAbusive, {
-        email,
-        domain: candidate?.domain,
-        reason: refusal.reason
-      })
+      if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) { return false }
+      const parts = parseEmail(email)
+      if (parts === null) return false
+      const reason = await reasonOf({ email, parts, ip, verified })
+      if (reason === null) return false
+      notifyQuietly(onAbusive, { email, domain: parts.domain, reason })
       return true
     } catch (error) {
       notifyQuietly(onError, { error })
