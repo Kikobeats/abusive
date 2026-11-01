@@ -1,5 +1,8 @@
 'use strict'
 
+const { domainToASCII } = require('url')
+const createSignupScreen = require('./signup')
+
 const INVISIBLE_CHARACTERS = /[\p{Cf}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu
 // NFKC folds U+FF0E to "." and U+FF61 to U+3002. U+3002 itself is unchanged.
 const LABEL_DOTS = /\u3002/g
@@ -17,6 +20,18 @@ const LETTER_RUNS = /[a-z]+/g
 const HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
 // Below this, a numbered mailbox like jo2 is shared by too many people.
 const MIN_MAILBOX_LENGTH = 3
+const MAX_ADDRESS_LENGTH = 320
+const MAX_DOMAIN_LENGTH = 253
+const MAX_LOCAL_LENGTH = 64
+const MAX_LABEL_LENGTH = 63
+const MIN_DOMAIN_LABELS = 2
+const MAX_DOMAIN_LABELS = 8
+const HOSTNAME_LABEL = /^[a-z0-9-]+$/
+const LETTER_ASCII = /[a-z]/
+const FORMAT_CHARACTER = /\p{Cf}/u
+const DOMAIN_CHARACTERS =
+  /^[\p{L}\p{N}\p{M}\u00B7\u0375\u05F3\u05F4\u30FB.-]+$/u
+const LOCAL_CHARACTERS = /^[\p{L}\p{N}\p{M}!#$%&'*+/=?^_`{|}~.-]+$/u
 const GMAIL_DOMAINS = ['gmail.com', 'googlemail.com']
 const SAME_INBOX = 'same-inbox'
 const NUMBERED = 'numbered'
@@ -51,7 +66,7 @@ const toDomainSet = dataset => {
   return new Set(
     Array.from(dataset, domain =>
       canonicalAddress(domain).replace(TRAILING_DOTS, '')
-    )
+    ).flatMap(domain => [domain, domainToASCII(domain)])
   )
 }
 
@@ -128,6 +143,58 @@ const isSearchable = candidate =>
   SAFE_MAILBOX.test(candidate.local) &&
   collapsedInboxOf(candidate) !== ''
 
+const isDomainLabel = label =>
+  label.length >= 1 &&
+  label.length <= MAX_LABEL_LENGTH &&
+  HOSTNAME_LABEL.test(label) &&
+  !label.startsWith('-') &&
+  !label.endsWith('-')
+
+const isHostname = domain => {
+  const labels = domain.split('.')
+  return (
+    domain.length <= MAX_DOMAIN_LENGTH &&
+    labels.length >= MIN_DOMAIN_LABELS &&
+    labels.length <= MAX_DOMAIN_LABELS &&
+    labels.every(isDomainLabel) &&
+    LETTER_ASCII.test(labels.at(-1))
+  )
+}
+
+const signupDomainOf = domain => {
+  if (
+    typeof domain !== 'string' ||
+    domain.length > MAX_DOMAIN_LENGTH ||
+    FORMAT_CHARACTER.test(domain)
+  ) {
+    return null
+  }
+  const text = canonicalAddress(domain).replace(TRAILING_DOTS, '')
+  if (!DOMAIN_CHARACTERS.test(text)) return null
+  const ascii = inboxDomainOf(domainToASCII(text))
+  return isHostname(ascii) ? ascii : null
+}
+
+const signupCandidateOf = email => {
+  if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) { return null }
+  const parts = parseEmail(email)
+  if (
+    parts === null ||
+    parts.local.length > MAX_LOCAL_LENGTH ||
+    !LOCAL_CHARACTERS.test(parts.local)
+  ) {
+    return null
+  }
+  const domain = signupDomainOf(email.slice(email.lastIndexOf('@') + 1))
+  if (domain === null) return null
+  const inbox = inboxOf({ local: parts.local, domain }) || parts.local
+  return {
+    domain,
+    identity: `${inbox}@${domain}`,
+    spelling: `${parts.local}@${domainToASCII(parts.domain)}`
+  }
+}
+
 const assertMinSiblings = value => {
   if (!Number.isInteger(value) || value < 1) {
     throw new TypeError(
@@ -156,7 +223,8 @@ const createAbusive = ({
   dataset,
   lookup,
   limit = Infinity,
-  minSiblings = 1
+  minSiblings = 1,
+  signup
 } = {}) => {
   const freeEmailDomains = toDomainSet(dataset)
   if (lookup != null && typeof lookup !== 'function') {
@@ -206,12 +274,29 @@ const createAbusive = ({
     if (lookup == null) {
       throw new TypeError('`lookup` is required to find siblings')
     }
+    if (String(email).length > MAX_ADDRESS_LENGTH) return null
     const candidate = parseEmail(email)
     if (candidate === null || !isSearchable(candidate)) return null
     return registeredSibling(candidate)
   }
 
-  return { findSibling, isFreeEmail, isFreeEmailDomain, isSibling, parseEmail }
+  const signupScreen =
+    signup &&
+    createSignupScreen({
+      ...signup,
+      candidateOf: signupCandidateOf,
+      domainOf: signupDomainOf,
+      isAlwaysShared: domain => isGmail(domain) || freeEmailDomains.has(domain)
+    })
+
+  return {
+    findSibling,
+    isFreeEmail,
+    isFreeEmailDomain,
+    isSibling,
+    parseEmail,
+    ...signupScreen
+  }
 }
 
 module.exports = createAbusive

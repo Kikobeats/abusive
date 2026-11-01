@@ -13,6 +13,10 @@
     "./stripe": {
       "types": "./src/stripe.d.ts",
       "default": "./src/stripe.js"
+    },
+    "./redis": {
+      "types": "./src/redis.d.ts",
+      "default": "./src/redis.js"
     }
   },
   "author": {

@@ -17,6 +17,7 @@ john1987@gmail.com   allowed: a year is not a counter
 - Refuses the next signup without banning the whole domain.
 - Tells the same inbox written another way apart from numbered variants that may be a different person.
 - Flags free and disposable email providers from the domain list you choose.
+- Refuses a second account from one IP and a burst of accounts on one domain, remembering them after the accounts are deleted.
 - Works with any user store: Stripe, SQL, or anything that can list emails by domain.
 - Zero dependencies, with TypeScript types included.
 
@@ -90,6 +91,98 @@ A numbered address is a different inbox, so it can belong to a different person:
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
+## Signup signals
+
+`findSibling` only sees addresses that look alike. Someone signing up as `azod738@gmail.com` and `waliullahshah965@gmail.com` from one machine, or with random mailboxes on a domain they own, passes it. Signup signals catch those from where the request comes from and what you have already seen, and what they remember is not tied to the account, so it outlives deleting one.
+
+| Reason | Refused when | Lasts |
+|---|---|---|
+| `same-ip` | Another inbox already signed up from this IP. IPv6 addresses are compared by `/64` network. | `ipMemoryMs`, 30 days by default |
+| `domain-burst` | This is the `burstLimit`th different inbox on one domain within `burstWindowMs`, 3 in 7 days by default. | The domain is blocked for `burstBlockMs`, 90 days by default |
+| `blocked-domain` | The domain, or a parent of it, is blocked. | Until it expires or `unblockDomain` |
+| `same-inbox` | An admitted inbox comes back spelled differently, such as `jane+2@acme.com` after `jane+1@acme.com`. | `ipMemoryMs` |
+| `malformed` | The address is not one these rules can judge, such as `a@evil.com,x@victim.com`, or is over the limits: 320 characters, a 64 character mailbox, 8 domain labels. Most domains with emoji or zero-width joiners count too, unless written as punycode. | |
+
+```js
+const Redis = require('ioredis')
+const redisStore = require('abusive/redis')
+
+const { admitSignup, checkSignup } = require('abusive')({
+  dataset: require('free-email-domains'),
+  signup: {
+    store: redisStore(new Redis(process.env.REDIS_URL, { commandTimeout: 1000 })),
+    secret: process.env.SIGNUP_SECRET,
+    isTrustedDomain: domain => hasPayingCustomer(domain),
+    onBlock: domain => notifyYourself(domain)
+  }
+})
+
+await admitSignup('azod738@gmail.com', { ip })          // => null
+await admitSignup('waliullahshah965@gmail.com', { ip }) // => { reason: 'same-ip' }
+```
+
+Do not show the reason to the person signing up. Like a sibling match, it tells them what to change.
+
+### admitSignup and checkSignup
+
+| Method | Writes | Use it |
+|---|---|---|
+| `.admitSignup(email, { ip })` | Yes | Once the address is verified, for an account you have not accepted yet. It applies every rule, takes the IP and counts the inbox towards its domain. |
+| `.checkSignup(email)` | No | Before verification, on an endpoint anyone can call. It only refuses `blocked-domain` and `malformed`. Anything more would let a caller test who is registered or which domains are trusted, so the IP rule waits for `admitSignup`. |
+
+Both resolve `null` to allow, or `{ reason }` to refuse. A store failure rejects, and deciding whether to fail open is up to you. A store that hangs without failing makes them hang too, so give your client a command timeout, as above.
+
+- **New accounts only.** Do not call `admitSignup` for accounts you already accepted. An admitted inbox passes again for `ipMemoryMs` without taking the new IP, but after that it counts as new.
+- **One call at a time per address.** Simultaneous calls for the same address can each take an IP, and one being refused can release what the other holds, so hold a lock per account around `admitSignup`.
+- **A race can refuse both.** Signups are judged against claims still in progress, so two arriving together can both be refused when the first is then refused too. Refusal is never permanent here: trying again gets the right answer.
+- **Blocks win.** A blocked domain refuses an admitted inbox too, so an abuser you deleted cannot return on it.
+- **One inbox, one account.** `jane+1@acme.com` then `jane+2@acme.com` is refused as `same-inbox`, and so is `j.ane@gmail.com` after `jane@gmail.com`. Numbered variants like `jane2@` are different inboxes, so keep `findSibling` alongside these rules.
+- **A refused signup takes nothing.** An address the IP rule refuses is not counted, even when it arrives at the same moment as the winner, and one the burst rule refuses gives its IP back. It does stay in the burst count until the window ends.
+- **`ip` must be one address you trust,** such as your platform's client IP header, not a raw `X-Forwarded-For` list. A missing or malformed `ip` skips the IP rule.
+- **Callbacks see clean hostnames.** Rules and callbacks only ever receive a lowercase ASCII hostname, safe to put in a query. Internationalised domains arrive as punycode.
+
+### Signup options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `store` | `object` | *required* | Where signals are kept. See [Store](#store). |
+| `secret` | `string` | *required* | HMAC key for IPs and addresses, neither of which is ever stored in the clear. Changing it forgets every IP and inbox, but an inbox already in the burst count counts twice until the window ends. Domains are stored as they are. |
+| `ipMemoryMs` | `number` | 30 days | How long an IP stays taken. |
+| `burstLimit` | `number` | `3` | Different inboxes on one domain that trigger the block. |
+| `burstWindowMs` | `number` | 7 days | The window they are counted in. |
+| `burstBlockMs` | `number` | 90 days | How long that block lasts. `blockDomain` is permanent instead. |
+| `onBlock` | `function` | | Called with the domain when a burst blocks it. It is not awaited and its errors are ignored, so on serverless wrap it in your platform's `waitUntil`. Use it to look at the block, since three people at a university can trigger one. |
+| `isSharedDomain` | `function` | `() => false` | More domains shared by unrelated people. They skip the burst rule and keep the IP rule, as Gmail and every domain in `dataset` already do, matched exactly. No list is complete: add the providers your users have. |
+| `isTrustedDomain` | `function` | `() => false` | Domains that pass the IP, burst and block rules, such as those with a paying customer. It is only called when a rule would refuse, and never for a shared domain: one paying Gmail customer must not open the IP rule for all of Gmail. It does not cover subdomains, and a block on a parent refuses them outright. Trusted signups still count, so if trust lapses, the next new inbox can block the domain. |
+
+### Store
+
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set`, `get`, `del` and `multi`. Keys start with `abusive:`, or the `prefix` option. To keep signals somewhere else, pass an object with:
+
+| Method | Must |
+|---|---|
+| `claim(key, value, ttlMs?)` | Atomically store `value` if `key` is free, and resolve whoever holds it. Without `ttlMs` it never expires. |
+| `read(key)` | Resolve the value or `null`. |
+| `write(key, value)` | Atomically overwrite the key, with no expiry. |
+| `countRecent(key, member, windowMs)` | Add `member`, keeping its first-seen time, and resolve how many members are inside the window. |
+| `remove(...keys)` | Delete the keys. |
+
+`claim` being atomic is what stops two signups at the same moment from both taking an IP.
+
+### Fixing a refusal by hand
+
+| Method | Does |
+|---|---|
+| `.blockDomain(domain)` | Blocks the domain and its subdomains until unblocked. It rejects with a `TypeError` for anything that is not a domain, like `localhost`. There is no public suffix check, so do not pass `co.uk`. |
+| `.unblockDomain(domain)` | Removes the block and restarts its count. |
+| `.forgetSignup(email, { ip })` | Forgets an inbox and frees that IP, whoever holds it. Use it for someone wrongly refused as `same-ip` or `same-inbox`. It stays in the burst count until the window ends. For a `domain-burst` use `unblockDomain`. |
+
+### What gets through
+
+- The first `burstLimit - 1` inboxes on a new domain, and random subdomains, since each is counted on its own.
+- Someone who changes IP between signups with a VPN or a mobile reconnect.
+- People behind one office or mobile carrier IP count as one signup: the second one is refused. Use `isTrustedDomain`, and give refused people a way to reach you.
+
 ## Lookups
 
 A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. The full contract is in [lookup](#lookup).
@@ -143,6 +236,7 @@ Returns an object with the methods below. Create it once and reuse it: the datas
 | [`lookup`](#lookup) | `function` | | Returns the registered addresses at a domain. Required by `findSibling`. |
 | [`limit`](#limit) | `number` | `Infinity` | Maximum addresses read per `findSibling` call. |
 | [`minSiblings`](#minsiblings) | `number \| function` | `1` | Numbered siblings needed before one is reported. |
+| `signup` | `object` | | Enables `admitSignup`, `checkSignup`, `blockDomain`, `unblockDomain` and `forgetSignup`. See [Signup signals](#signup-signals). |
 
 #### dataset
 
