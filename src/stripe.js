@@ -15,6 +15,9 @@ const stripeLookup = (
       '`client` must be a Stripe client or a function returning one'
     )
   }
+  if (limit !== Infinity && (!Number.isInteger(limit) || limit < 1)) {
+    throw new TypeError('`limit` must be a positive integer or Infinity')
+  }
   return async function * ({ domain, keyword }) {
     if (keyword.length < MIN_KEYWORD_LENGTH) return
     const query = `email~"@${domain}" AND email~"${keyword}"`

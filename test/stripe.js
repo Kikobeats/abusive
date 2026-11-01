@@ -151,6 +151,32 @@ test('requires a client', t => {
   t.is(stripeLookup.stripeLookup, stripeLookup)
 })
 
+test('a limit that would read nothing, or everything, throws', t => {
+  for (const limit of [null, 0, -1, 1.5, NaN, '500']) {
+    t.throws(() => stripeLookup(fakeStripe(), { limit }), {
+      instanceOf: TypeError,
+      message: /limit/
+    })
+  }
+})
+
+test('the smallest limit and an explicit Infinity read customers', async t => {
+  for (const [limit, expected] of [
+    [1, ['a@acme.com']],
+    [Infinity, ['a@acme.com', 'b@acme.com']],
+    [undefined, ['a@acme.com', 'b@acme.com']]
+  ]) {
+    const read = []
+    const lookup = stripeLookup(fakeStripe('a@acme.com', 'b@acme.com'), {
+      limit
+    })
+    for await (const email of lookup({ domain: 'acme.com', keyword: 'abc' })) {
+      read.push(email)
+    }
+    t.deepEqual(read, expected)
+  }
+})
+
 test('without a limit every customer is read', async t => {
   const emails = Array.from({ length: 150 }, (_, index) => `a${index}@acme.com`)
   const read = []

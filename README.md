@@ -136,7 +136,7 @@ Limits of Stripe search:
 | Argument | Type | Default | Description |
 |---|---|---|---|
 | `client` | `Stripe \| () => Stripe` | *required* | A Stripe client, or a function returning one. The function is called on every lookup, so the client can be created lazily. |
-| `options.limit` | `number` | `Infinity` | Customers read per lookup. Gmail searches two domains, so it can read twice this. A custom lookup has to limit itself. |
+| `options.limit` | `number` | `Infinity` | Customers read per lookup, a positive integer or `Infinity`, or `stripeLookup` throws. Gmail searches two domains, so it can read twice this. A custom lookup has to limit itself. |
 | `options.pageSize` | `number` | `100` | Customers per search request. Pair it with `options.limit` to bound how many customers are read in total. |
 
 ### SQL
