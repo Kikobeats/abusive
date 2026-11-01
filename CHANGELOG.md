@@ -1,3 +1,9 @@
+## 2.1.0 (2026-11-01)
+
+### Features
+
+* keep an IP forever unless ttlMs is set ([#9](https://github.com/kikobeats/abusive/issues/9)) ([a472283](https://github.com/kikobeats/abusive/commit/a472283747ac69346ffb0e2c6f6511b0b2e12f7b))
+
 ## 2.0.0 (2026-11-01)
 
 ### ⚠ BREAKING CHANGES
