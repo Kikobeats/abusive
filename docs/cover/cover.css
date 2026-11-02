@@ -43,6 +43,7 @@
 }
 
 .cover-hero {
+  --cover-fade: min(32vh, 280px);
   position: relative;
   min-height: 100vh;
   min-height: 100svh;
@@ -70,6 +71,8 @@
   width: 100%;
   height: 100%;
   z-index: -1;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--cover-fade)), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--cover-fade)), transparent);
 }
 
 .cover__still img {
