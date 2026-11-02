@@ -369,3 +369,9 @@ test('the copy status and the crawler copy are hidden with the one shared rule',
     /clip-path: inset\(50%\)/
   )
 })
+
+test('docsify and the stylesheet agree on where mobile starts', t => {
+  const css = read('docs/css/style.css')
+  const [, breakpoint] = css.match(/--_mobile-breakpoint: (\d+px);/)
+  t.true(css.includes(`@media (max-width: ${breakpoint})`))
+})

@@ -1,4 +1,5 @@
 :root {
+  --_mobile-breakpoint: 768px;
   --sidebar-width: 280px;
   --content-width: 760px;
 
