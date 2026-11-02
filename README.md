@@ -55,6 +55,12 @@ Each rule is on when its group is present. `isRejectedEmail` stays separate, bec
 
 Keep the refusal message neutral. Saying that a similar account exists tells an attacker which addresses are registered.
 
+Give your coding agent this prompt:
+
+```
+Wire abusive into this project's signup: run npm install abusive free-email-domains, create one instance with require('abusive')({ rejectedDomains: require('free-email-domains'), sibling: { lookup }, ip: { store }, secret: process.env.ABUSIVE_SECRET }) where lookup is stripeLookup from abusive/stripe or a function returning the registered emails at a domain and store is redisStore from abusive/redis with timeoutMs set, refuse the signup with a neutral message when await isAbusive({ email, ip }) is true, where ip is the client address from one header the platform trusts and is passed only in the handler that accepts the signup, never on a check anyone can call, and apply isRejectedEmail only if this project refuses free email providers.
+```
+
 Customers somewhere else? Swap the `lookup`, see [Lookups](#lookups). To compare two addresses without any setup:
 
 ```js
@@ -116,7 +122,7 @@ It resolves `true` or `false` and never rejects. A check that fails counts as no
 
 ## Lookups
 
-A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. The full contract is in [lookup](#lookup).
+A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. The full contract is in [sibling.lookup](#siblinglookup).
 
 ### Stripe
 

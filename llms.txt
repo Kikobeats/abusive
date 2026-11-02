@@ -1,0 +1,22 @@
+# abusive
+
+> Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers.
+
+abusive refuses the next signup without banning the whole domain. It compares a new address against the addresses you already have at that domain, and it can refuse a second account from one IP. It works with any user store and ships no domain list, so you bring the one you trust, such as free-email-domains.
+
+- Refuses the next signup without banning the whole domain.
+- Tells the same inbox written another way apart from numbered variants that may be a different person.
+- Flags free and disposable email providers from the domain list you choose.
+- Refuses a second account from one IP, remembering it after the first account is deleted.
+- Works with any user store: Stripe, SQL, or anything that can list emails by domain.
+- Zero dependencies, with TypeScript types included.
+
+## Docs
+
+- [Full documentation (Markdown)](https://abusive.js.org/README.md)
+- [Documentation site](https://abusive.js.org/)
+
+## Source
+
+- [GitHub](https://github.com/Kikobeats/abusive)
+- [npm](https://www.npmjs.com/package/abusive)

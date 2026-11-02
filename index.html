@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>abusive: refuse repeat signups to your free plan, for Node.js</title>
+  <meta name="description" content="Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers." />
+  <meta name="keywords" content="abusive, abuse, anti-abuse, disposable-email, duplicate-accounts, email, email-normalization, fraud, free-email, free-plan, free-trial, gmail, multi-accounting, saas, signup, stripe, subaddress" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#f8fafd" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0c0f14" media="(prefers-color-scheme: dark)" />
+  <link rel="canonical" href="https://abusive.js.org/" />
+  <link rel="alternate" type="text/markdown" href="https://abusive.js.org/README.md" title="abusive documentation markdown" />
+  <link rel="author" href="https://kikobeats.com" />
+
+  <meta property="og:title" content="abusive: refuse repeat signups to your free plan, for Node.js" />
+  <meta property="og:description" content="Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers." />
+  <meta property="og:image" content="https://abusive.js.org/static/banner.jpg?v=90281261" />
+  <meta property="og:image:width" content="2400" />
+  <meta property="og:image:height" content="1260" />
+  <meta property="og:image:alt" content="abusive logo, a magnifying glass, with the tagline: Catch the same person signing up twice." />
+  <meta property="og:url" content="https://abusive.js.org/" />
+  <meta property="og:site_name" content="abusive" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@Kikobeats" />
+  <meta name="twitter:creator" content="@Kikobeats" />
+  <meta name="twitter:title" content="abusive: refuse repeat signups to your free plan, for Node.js" />
+  <meta name="twitter:description" content="Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers." />
+  <meta name="twitter:image" content="https://abusive.js.org/static/banner.jpg?v=90281261" />
+  <meta name="twitter:image:alt" content="abusive logo, a magnifying glass, with the tagline: Catch the same person signing up twice." />
+  <meta name="twitter:label1" content="Installation" />
+  <meta name="twitter:data1" content="npm install abusive free-email-domains" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Person",
+        "@id": "https://kikobeats.com/#person",
+        "name": "Kiko Beats",
+        "url": "https://kikobeats.com",
+        "sameAs": [
+          "https://github.com/Kikobeats",
+          "https://x.com/Kikobeats"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://abusive.js.org/#website",
+        "name": "abusive",
+        "url": "https://abusive.js.org/",
+        "description": "Documentation for abusive: detect repeat signups abusing your free plan.",
+        "publisher": { "@id": "https://kikobeats.com/#person" },
+        "inLanguage": "en"
+      },
+      {
+        "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+        "@id": "https://abusive.js.org/#software",
+        "name": "abusive",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Node.js",
+        "url": "https://abusive.js.org/",
+        "image": "https://abusive.js.org/static/logo.png",
+        "sameAs": [
+          "https://github.com/Kikobeats/abusive",
+          "https://www.npmjs.com/package/abusive"
+        ],
+        "downloadUrl": "https://www.npmjs.com/package/abusive",
+        "codeRepository": "https://github.com/Kikobeats/abusive",
+        "programmingLanguage": "JavaScript",
+        "runtimePlatform": "Node.js >= 18",
+        "license": "https://github.com/Kikobeats/abusive/blob/master/LICENSE.md",
+        "author": { "@id": "https://kikobeats.com/#person" },
+        "description": "Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers.",
+        "featureList": [
+          "Refuses the next signup without banning the whole domain",
+          "Tells the same inbox written another way apart from numbered variants that may be a different person",
+          "Flags free and disposable email providers from the domain list you choose",
+          "Refuses a second account from one IP, remembering it after the first account is deleted",
+          "Works with any user store: Stripe, SQL, or anything that can list emails by domain",
+          "Zero dependencies, with TypeScript types included"
+        ],
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="static/logo.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-32x32.png" />
+  <link rel="apple-touch-icon" href="static/logo.png" />
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codecopy@1.0.2/umd/codecopy.min.css" />
+  <link rel="stylesheet" href="static/style.min.css" />
+  <link rel="stylesheet" href="docs/cover/cover.css" />
+</head>
+
+<body>
+  <main id="seo-content" class="visually-hidden" aria-label="abusive overview">
+    <h1>abusive</h1>
+    <p>Detect repeat signups abusing your free plan. abusive refuses the next signup without banning the whole domain: it compares a new address with the addresses you already have at that domain, and it can refuse a second account from one IP.</p>
+    <p>Two different addresses at the same domain are siblings in one of two ways. The same inbox is the part before the @ without its +tag, and Gmail also ignores dots, so derek+promo@gmail.com and d.e.r.e.k@gmail.com are derek@gmail.com. A numbered address differs only by a counter or a separator, so derek2@gmail.com is a sibling of derek1@gmail.com, while john1987@gmail.com is not a sibling of john@gmail.com, because a year is not a counter.</p>
+    <ul>
+      <li>The IP rule refuses a second account from one IP, and remembers that IP after the first account is deleted.</li>
+      <li>Free and disposable email providers are flagged from the domain list you choose. abusive ships no list, and free-email-domains is one you can use.</li>
+      <li>It works with any user store: Stripe, SQL, or anything that can list emails by domain.</li>
+      <li>Zero dependencies, with TypeScript types included.</li>
+    </ul>
+    <p><a href="https://www.npmjs.com/package/abusive">Install abusive from npm</a> or <a href="https://github.com/Kikobeats/abusive">view the source on GitHub</a>.</p>
+  </main>
+  <div id="app"></div>
+  <noscript>
+    <p>JavaScript is required for the documentation. <a href="https://github.com/Kikobeats/abusive#readme">Read it on GitHub</a>.</p>
+  </noscript>
+  <script src="static/main.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/combine/npm/docsify@5.0.0/dist/docsify.min.js,npm/docsify@5.0.0/dist/plugins/search.min.js,npm/prismjs@1.30.0/components/prism-bash.min.js,npm/codecopy@1.0.2/umd/codecopy.min.js"></script>
+</body>
+
+</html>
