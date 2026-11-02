@@ -1,0 +1,316 @@
+'use strict'
+
+const { execFileSync } = require('node:child_process')
+const { cpSync, mkdtempSync, readFileSync, rmSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join } = require('node:path')
+const vm = require('node:vm')
+
+const { Window } = require('happy-dom')
+const { default: test } = require('ava')
+
+const ROOT = join(__dirname, '..')
+const read = file => readFileSync(join(ROOT, file), 'utf8')
+
+const SITE_SOURCES = ['docs/css/style.css', 'docs/js/main.js']
+const SITE_BUILDS = ['static/style.min.css', 'static/main.min.js']
+const COVER_IMPORT = 'import('
+const SITE = 'https://abusive.js.org/'
+
+test('the committed site bundles are what the build makes from the sources', t => {
+  const workspace = mkdtempSync(join(tmpdir(), 'abusive-site-'))
+  try {
+    for (const source of SITE_SOURCES) {
+      cpSync(join(ROOT, source), join(workspace, source))
+    }
+    execFileSync(
+      process.execPath,
+      [
+        join(ROOT, 'node_modules/gulp/bin/gulp.js'),
+        '--gulpfile',
+        join(ROOT, 'gulpfile.js'),
+        '--cwd',
+        workspace,
+        'build'
+      ],
+      { stdio: 'ignore' }
+    )
+    for (const build of SITE_BUILDS) {
+      t.is(read(build), readFileSync(join(workspace, build), 'utf8'), build)
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
+const metaContent = (html, attribute, name) =>
+  html.match(new RegExp(`<meta ${attribute}="${name}" content="([^"]+)"`))[1]
+
+const structuredData = html =>
+  JSON.parse(
+    html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]
+  )['@graph'].find(node => node['@id'].endsWith('#software'))
+
+const firstBulletList = markdown =>
+  markdown
+    .slice(markdown.search(/^- /m))
+    .split('\n\n')[0]
+    .split('\n')
+    .map(line => line.slice(2))
+
+const withoutPeriod = sentence => sentence.replace(/\.$/, '')
+
+test('every copy of the description says what the package description says', t => {
+  const { description } = JSON.parse(read('package.json'))
+  const sentence = `${description}.`
+  const html = read('index.html')
+  t.is(metaContent(html, 'name', 'description'), sentence)
+  t.is(metaContent(html, 'property', 'og:description'), sentence)
+  t.is(metaContent(html, 'name', 'twitter:description'), sentence)
+  t.is(structuredData(html).description, sentence)
+  t.true(read('README.md').includes(`\n> ${sentence}\n`))
+  t.true(read('llms.txt').includes(`\n> ${sentence}\n`))
+})
+
+test('every copy of the feature list is the README feature list', t => {
+  const features = firstBulletList(read('README.md'))
+  t.true(features.length > 0)
+  t.deepEqual(firstBulletList(read('llms.txt')), features)
+  t.deepEqual(
+    structuredData(read('index.html')).featureList,
+    features.map(withoutPeriod)
+  )
+})
+
+const docsPage = ({
+  url = SITE,
+  body = '',
+  gpu = true,
+  reducedMotion = false,
+  importCover = () => Promise.resolve()
+} = {}) => {
+  const window = new Window({ url })
+  const { document } = window
+  document.title = 'abusive'
+  document.body.innerHTML = body
+  window.matchMedia = query => ({
+    matches: reducedMotion && query === '(prefers-reduced-motion: reduce)'
+  })
+  window.codecopy = () => {}
+  const watching = new Set()
+  window.MutationObserver = class extends window.MutationObserver {
+    observe (...args) {
+      watching.add(this)
+      return super.observe(...args)
+    }
+
+    disconnect () {
+      watching.delete(this)
+      return super.disconnect()
+    }
+  }
+  const imports = []
+  window.importCover = specifier => {
+    imports.push(specifier)
+    return importCover(specifier)
+  }
+  const source = read('docs/js/main.js')
+  vm.runInNewContext(source.replace(COVER_IMPORT, 'window.importCover('), {
+    window,
+    document,
+    navigator: gpu ? { gpu: {} } : {},
+    URL,
+    URLSearchParams
+  })
+  const hooks = { doneEach: [], ready: [] }
+  for (const plugin of window.$docsify.plugins) {
+    plugin({
+      doneEach: fn => hooks.doneEach.push(fn),
+      ready: fn => hooks.ready.push(fn)
+    })
+  }
+  return {
+    window,
+    document,
+    imports,
+    watching,
+    source,
+    ready: () => hooks.ready.forEach(fn => fn()),
+    doneEach: () => hooks.doneEach.forEach(fn => fn())
+  }
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+const COVER = '<div data-cover data-mode="loading"></div>'
+
+test('the docs script imports the cover once', t => {
+  const page = docsPage({ body: COVER })
+  t.is(page.source.split(COVER_IMPORT).length - 1, 1)
+  page.ready()
+  page.ready()
+  t.deepEqual(page.imports, [`${SITE}docs/cover/main.js`])
+  t.is(page.watching.size, 0)
+  page.window.close()
+})
+
+test('the still frame hides only while a live cover is expected', async t => {
+  for (const [options, expectLive] of [
+    [{}, true],
+    [{ gpu: false }, false],
+    [{ reducedMotion: true }, false],
+    [{ url: `${SITE}?fallback` }, false]
+  ]) {
+    const page = docsPage({ body: COVER, ...options })
+    page.ready()
+    const hero = page.document.querySelector('[data-cover]')
+    t.is('expectLive' in hero.dataset, expectLive, JSON.stringify(options))
+    page.window.close()
+  }
+})
+
+test('a cover module that fails to load leaves the still frame', async t => {
+  const page = docsPage({
+    body: COVER,
+    importCover: () => Promise.reject(new Error('offline'))
+  })
+  page.ready()
+  await settle()
+  t.is(page.document.querySelector('[data-cover]').dataset.mode, 'fallback')
+  page.window.close()
+})
+
+test('a cover rendered after the docs are ready starts once it appears', async t => {
+  const page = docsPage()
+  page.ready()
+  t.deepEqual(page.imports, [])
+  t.is(page.watching.size, 1)
+  page.document.body.insertAdjacentHTML('beforeend', COVER)
+  await settle()
+  t.is(page.imports.length, 1)
+  t.is(page.watching.size, 0)
+  page.document.body.insertAdjacentHTML('beforeend', '<p>later</p>')
+  await settle()
+  t.is(page.imports.length, 1)
+  page.window.close()
+})
+
+test('signature headings at every level and in the sidebar are code', t => {
+  const page = docsPage({
+    body: `
+      <aside class="sidebar-nav"><ul>
+        <li><a>isAbusive({ email, ip, verified })</a></li>
+        <li><a>Install</a></li>
+        <li><a>abusive(options)</a></li>
+      </ul></aside>
+      <article class="markdown-section">
+        <h2>isAbusive({ email, ip, verified })</h2>
+        <h2>Install</h2>
+        <h3>abusive(options)</h3>
+        <h3>Store</h3>
+        <h4>stripeLookup(client, [options])</h4>
+        <h4>sibling.lookup</h4>
+        <p>isAbusive(email)</p>
+      </article>`
+  })
+  page.doneEach()
+  const marked = [...page.document.querySelectorAll('.signature')].map(
+    element => `${element.tagName} ${element.textContent}`
+  )
+  t.deepEqual(marked, [
+    'A isAbusive()',
+    'A abusive()',
+    'H2 isAbusive({ email, ip, verified })',
+    'H3 abusive(options)',
+    'H4 stripeLookup(client, [options])'
+  ])
+  t.is(
+    page.document.querySelectorAll('.sidebar-nav a')[1].textContent,
+    'Install'
+  )
+  page.window.close()
+})
+
+test('a sidebar holding only the page title shows its sections instead', t => {
+  const page = docsPage({
+    body: `<div class="sidebar-nav"><ul><li><a>abusive</a><ul>
+      <li><a>Install</a></li><li><a>Quick start</a></li>
+    </ul></li></ul></div>`
+  })
+  page.doneEach()
+  const top = [...page.document.querySelectorAll('.sidebar-nav > ul > li')]
+  t.deepEqual(
+    top.map(item => item.textContent.trim()),
+    ['Install', 'Quick start']
+  )
+  page.window.close()
+})
+
+test('a sidebar with several entries or no sections is left alone', t => {
+  for (const body of [
+    '<div class="sidebar-nav"><ul><li><a>One</a><ul><li>a</li></ul></li><li><a>Two</a></li></ul></div>',
+    '<div class="sidebar-nav"><ul><li><a>Only</a></li></ul></div>'
+  ]) {
+    const page = docsPage({ body })
+    const before = page.document.querySelector('.sidebar-nav').innerHTML
+    page.doneEach()
+    t.is(page.document.querySelector('.sidebar-nav').innerHTML, before)
+    page.window.close()
+  }
+})
+
+test('the crawler copy leaves once the docs render', t => {
+  const page = docsPage({
+    body: '<main id="seo-content"><h1>abusive</h1></main>'
+  })
+  page.doneEach()
+  t.is(page.document.querySelector('#seo-content'), null)
+  page.doneEach()
+  page.window.close()
+  t.pass()
+})
+
+test('search results drop the backticks from titles and snippets only', async t => {
+  const page = docsPage({
+    body: '<div class="search"><div class="results-panel"></div></div>'
+  })
+  page.ready()
+  page.document.querySelector('.results-panel').innerHTML = `
+    <div class="matching-post">
+      <h2 class="title">\`sibling.min\`</h2>
+      <p class="content">set \`min\` to <b>\`2\`</b></p>
+      <p class="other">\`kept\`</p>
+    </div>`
+  await settle()
+  const text = selector => page.document.querySelector(selector).textContent
+  t.is(text('.title'), 'sibling.min')
+  t.is(text('.content'), 'set min to 2')
+  t.is(text('.other'), '`kept`')
+  page.window.close()
+})
+
+test('the docs work without a search panel', t => {
+  const page = docsPage()
+  t.notThrows(() => page.ready())
+  page.window.close()
+})
+
+const ruleBody = (css, selector) => {
+  const start = css.indexOf(`${selector} {`)
+  if (start === -1) throw new Error(`no rule for ${selector}`)
+  return css.slice(start, css.indexOf('}', start))
+}
+
+test('signature headings and sidebar links are set in the code font', t => {
+  const css = read('docs/css/style.css')
+  for (const selector of [
+    '.markdown-section .signature',
+    '.sidebar-nav a.signature'
+  ]) {
+    t.regex(
+      ruleBody(css, selector),
+      /font-family: var\(--code-font\)/,
+      selector
+    )
+  }
+})

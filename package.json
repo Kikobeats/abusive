@@ -70,6 +70,7 @@
     "gulp-concat": "latest",
     "gulp-postcss": "latest",
     "gulp-uglify": "latest",
+    "happy-dom": "latest",
     "ioredis": "latest",
     "nano-staged": "latest",
     "postcss": "latest",

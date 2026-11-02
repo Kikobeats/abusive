@@ -51,6 +51,125 @@ test('a narrow cover is the mobile layout and a wide cover is the desktop one', 
   t.false(layoutFor(760, 900, DESKTOP_TEXT).mobile)
 })
 
+test('the wall font grows only on covers wider than 1800px', async t => {
+  const { layoutFor } = await scene
+  t.is(layoutFor(1800, 1080, DESKTOP_TEXT).fontSize, 13)
+  t.is(layoutFor(1801, 1080, DESKTOP_TEXT).fontSize, 14)
+})
+
+test('the desktop mark scale stays between its limits', async t => {
+  const { layoutFor } = await scene
+  t.is(layoutFor(760, 300, DESKTOP_TEXT).scale, 4)
+  const roomy = { ...DESKTOP_TEXT, right: 300, bodyRight: 300 }
+  t.is(layoutFor(4000, 3000, roomy).scale, 12)
+})
+
+const overlapsWordmark = (layout, text, homeX, MARK_OUTLINE) =>
+  MARK_OUTLINE.some(([x, y]) => {
+    const px = homeX + x * layout.scale
+    const py = layout.home[1] + y * layout.scale
+    return py <= text.wordmarkBottom + 24 && px <= text.right + 24
+  })
+
+test('the mark moves right only as far as it must to clear the wordmark', async t => {
+  const { layoutFor, MARK_OUTLINE } = await scene
+  const clear = { ...DESKTOP_TEXT, right: -Infinity, wordmarkBottom: -Infinity }
+  const resting = layoutFor(1440, 900, clear).home[0]
+  const layout = layoutFor(1440, 900, DESKTOP_TEXT)
+  t.true(layout.home[0] > resting)
+  t.false(overlapsWordmark(layout, DESKTOP_TEXT, layout.home[0], MARK_OUTLINE))
+  t.true(
+    overlapsWordmark(layout, DESKTOP_TEXT, layout.home[0] - 4, MARK_OUTLINE)
+  )
+})
+
+test('a wordmark the mark can never clear stops it at the right margin', async t => {
+  const { layoutFor } = await scene
+  const wall = { ...DESKTOP_TEXT, right: 1440, wordmarkBottom: 900 }
+  const [homeX] = layoutFor(1440, 900, wall).home
+  t.true(homeX >= 1440 - 56 - 12 && homeX < 1440 - 56 - 12 + 4)
+})
+
+test('a lens with no room to travel rests at its home', async t => {
+  const { layoutFor, lensUnder } = await scene
+  const narrow = layoutFor(800, 120, { ...DESKTOP_TEXT, bodyRight: 700 })
+  const corners = [
+    { x: 0, y: 0 },
+    { x: 800, y: 120 }
+  ].map(pointer => lensUnder(pointer, narrow, 0))
+  t.deepEqual(corners[0], corners[1])
+  t.deepEqual(corners[0], { x: narrow.home[0], y: narrow.home[1] })
+})
+
+const CLEAR_OF_WORDMARK = {
+  ...DESKTOP_TEXT,
+  right: -Infinity,
+  wordmarkBottom: -Infinity
+}
+const SCENE_GAP_LEFT = 30 + 12
+const SCENE_GAP_RIGHT = 56 + 12
+
+const swayEdges = (layout, swayBounds) => {
+  const units = swayBounds(layout.angle)
+  return {
+    left: layout.home[0] + units.left * layout.scale,
+    right: layout.home[0] + units.right * layout.scale
+  }
+}
+
+test('a desktop mark with room to spare is centered in the scene', async t => {
+  const { layoutFor, swayBounds } = await scene
+  const layout = layoutFor(1440, 900, CLEAR_OF_WORDMARK)
+  const { left, right } = swayEdges(layout, swayBounds)
+  const sceneLeft = DESKTOP_TEXT.bodyRight + SCENE_GAP_LEFT
+  const sceneRight = 1440 - SCENE_GAP_RIGHT
+  t.true(left > sceneLeft)
+  t.true(Math.abs(left - sceneLeft - (sceneRight - right)) < 1e-9)
+})
+
+test('a desktop mark wider than its scene starts at the scene left edge', async t => {
+  const { layoutFor, swayBounds } = await scene
+  const layout = layoutFor(760, 300, CLEAR_OF_WORDMARK)
+  const { left, right } = swayEdges(layout, swayBounds)
+  const sceneLeft = DESKTOP_TEXT.bodyRight + SCENE_GAP_LEFT
+  t.true(right > 760 - SCENE_GAP_RIGHT)
+  t.true(Math.abs(left - sceneLeft) < 1e-9)
+})
+
+test('a wide phone caps the mobile mark scale', async t => {
+  const { layoutFor } = await scene
+  const copy = { ...DESKTOP_TEXT, bottom: 366 }
+  t.is(layoutFor(759, 2000, copy).scale, 7)
+  t.true(layoutFor(320, 2000, copy).scale < 7)
+})
+
+test('the desktop vertical wander grows with the cover up to 14px', async t => {
+  const { layoutFor } = await scene
+  t.is(layoutFor(1440, 600, DESKTOP_TEXT).wander[1], 9.6)
+  t.is(layoutFor(1440, 900, DESKTOP_TEXT).wander[1], 14)
+})
+
+test('the desktop entry slides in at most 260px and never from past the edge', async t => {
+  const { layoutFor } = await scene
+  t.is(layoutFor(1440, 900, DESKTOP_TEXT).entry[0], 260)
+  const pushed = layoutFor(1440, 900, {
+    ...DESKTOP_TEXT,
+    right: 1440,
+    wordmarkBottom: 900
+  })
+  t.is(pushed.entry[0], 1440 - pushed.home[0])
+})
+
+test('the intro glide eases in, passes halfway at its midpoint and eases out', async t => {
+  const { introState, INTRO } = await scene
+  t.is(introState(0).glide, 0)
+  t.is(introState(INTRO.glide / 4).glide, 0.0625)
+  t.is(introState(INTRO.glide / 2).glide, 0.5)
+  t.is(introState((INTRO.glide * 3) / 4).glide, 0.9375)
+  t.is(introState(INTRO.glide * 2).glide, 1)
+  t.is(introState(INTRO.appear * 2).appear, 1)
+})
+
 test('the desktop scrim starts at the measured ink', async t => {
   const { layoutFor } = await scene
   const layout = layoutFor(1440, 900, DESKTOP_TEXT)
@@ -167,10 +286,11 @@ test('encoded rows carry each inbox line split at the local part', async t => {
   })
 })
 
-test('an inbox line that does not fit its cells is refused', async t => {
+test('an inbox line fits its 36 cells and one more character is refused', async t => {
   const { encodeLines } = await content
+  t.notThrows(() => encodeLines([['a'.repeat(30), 'x.com']]))
   t.true(
-    t.throws(() => encodeLines([['a'.repeat(40), 'x.com']])) instanceof
+    t.throws(() => encodeLines([['a'.repeat(31), 'x.com']])) instanceof
       RangeError
   )
 })
@@ -211,15 +331,18 @@ test('the lens magnifies what is under it', t => {
   t.true(wgslConstant(wgsl, 'LENS_PINCUSHION') >= 0)
 })
 
-test('the scroll cue points at a README section', t => {
-  const id = read('_coverpage.md').match(
-    /class="cover__scroll" href="#\/\?id=([\w-]+)"/
-  )[1]
+test('every cover link into the docs points at a README section', t => {
+  const ids = [
+    ...read('_coverpage.md').matchAll(/href="#\/\?id=([\w-]+)"/g)
+  ].map(([, id]) => id)
   const headings = read('README.md')
     .split('\n')
     .filter(line => line.startsWith('## '))
     .map(line => line.slice(3).trim().toLowerCase().replace(/\s+/g, '-'))
-  t.true(headings.includes(id), `#${id} is not a README section`)
+  t.deepEqual(ids, ['quick-start', 'install'])
+  for (const id of ids) {
+    t.true(headings.includes(id), `#${id} is not a README section`)
+  }
 })
 
 test('the cover copies the agent prompt from the README', t => {
@@ -228,11 +351,7 @@ test('the cover copies the agent prompt from the README', t => {
   const prompt = readme.match(
     /Wire abusive into this project's signup:.*free email providers\./
   )[0]
-  const copied = cover
-    .match(/data-prompt="([^"]*)"/)[1]
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-  t.is(copied, prompt)
+  t.is(cover.match(/data-prompt="([^"]*)"/)[1], prompt)
   for (const api of [
     'isAbusive({ email })',
     'verified: true',
@@ -243,4 +362,120 @@ test('the cover copies the agent prompt from the README', t => {
     t.true(prompt.includes(api), api)
   }
   t.false(/—/.test(prompt))
+})
+
+test('the committed shader module is the prepared lens.wgsl', async t => {
+  const { lensShader } = await import('../docs/cover/shaders.js')
+  const source = lensShader.wgsl
+    .replace(/^\/\/ vgsl-module: .*\n/gm, '')
+    .replace(/_vgsl_m\d+__/g, '')
+  t.is(source, read('docs/cover/shaders/lens.wgsl'))
+})
+
+const followState = async ({ seconds, pointer = null }) => {
+  const { layoutFor } = await scene
+  return {
+    seconds,
+    theme: 0,
+    themeTarget: 0,
+    layout: layoutFor(1440, 900, DESKTOP_TEXT),
+    lens: null,
+    velocityX: 0,
+    pointer
+  }
+}
+
+const settle = (stepLens, state, steps = 400) => {
+  for (let i = 0; i < steps; i++) stepLens(state, 0.05)
+}
+
+test('the first still step puts the lens on its autopilot', async t => {
+  const { stepLens, autopilot } = await scene
+  const state = await followState({ seconds: 4.2 })
+  stepLens(state, 0)
+  const auto = autopilot(4.2, state.layout)
+  t.is(state.lens.x, auto.x)
+  t.is(state.lens.y, auto.y)
+  t.is(state.lens.angle, auto.angle)
+  t.is(state.seconds, 4.2)
+})
+
+test('a still step keeps the lens tilt a number', async t => {
+  const { stepLens } = await scene
+  const state = await followState({ seconds: 4.2 })
+  stepLens(state, 0.05)
+  stepLens(state, 0)
+  t.true(Number.isFinite(state.lens.angle))
+  t.true(Number.isFinite(state.velocityX))
+})
+
+test('the lens ignores the pointer until the intro glide ends', async t => {
+  const { stepLens, autopilot, lensUnder, INTRO } = await scene
+  const pointer = { x: 1100, y: 400 }
+  const early = await followState({ seconds: 0, pointer })
+  stepLens(early, 0)
+  for (let i = 0; i < 40; i++) stepLens(early, 0.05)
+  t.true(early.seconds <= INTRO.glide)
+  const auto = autopilot(early.seconds, early.layout)
+  const under = lensUnder(pointer, early.layout, auto.angle)
+  t.true(
+    Math.abs(early.lens.x - auto.x) < Math.abs(early.lens.x - under.x),
+    'the lens chased the pointer during the intro'
+  )
+
+  const late = await followState({ seconds: 4.2, pointer })
+  settle(stepLens, late)
+  const goal = lensUnder(
+    pointer,
+    late.layout,
+    autopilot(late.seconds, late.layout).angle
+  )
+  t.true(Math.abs(late.lens.x - goal.x) < 1)
+  t.true(Math.abs(late.lens.y - goal.y) < 1)
+})
+
+test('a fast pointer tilts the lens to its limit and no further, either way', async t => {
+  const { stepLens, autopilot } = await scene
+  for (const [x, sign] of [
+    [1120, 1],
+    [840, -1]
+  ]) {
+    const state = await followState({
+      seconds: 4.2,
+      pointer: { x: 980, y: 450 }
+    })
+    settle(stepLens, state)
+    state.pointer = { x, y: 450 }
+    stepLens(state, 0.05)
+    stepLens(state, 0.05)
+    const tilt = state.lens.angle - autopilot(state.seconds, state.layout).angle
+    t.true(Math.abs(tilt - sign * 0.05) < 1e-12, `tilt ${tilt}`)
+  }
+})
+
+test('a long step weighs the new velocity fully and never overshoots it', async t => {
+  const { stepLens } = await scene
+  const state = await followState({
+    seconds: 4.2,
+    pointer: { x: 1100, y: 450 }
+  })
+  stepLens(state, 0)
+  const before = state.lens.x
+  stepLens(state, 0.5)
+  t.is(state.velocityX, (state.lens.x - before) / 0.5)
+})
+
+test('the theme eases at a fixed rate and lands on its target, both ways', async t => {
+  const { stepLens } = await scene
+  const state = await followState({ seconds: 4.2 })
+  state.themeTarget = 1
+  stepLens(state, 0.045)
+  t.true(Math.abs(state.theme - 0.1) < 1e-12)
+  settle(stepLens, state, 20)
+  t.is(state.theme, 1)
+  state.themeTarget = 0
+  stepLens(state, 0.045)
+  t.true(Math.abs(state.theme - 0.9) < 1e-12)
+  settle(stepLens, state, 20)
+  t.is(state.theme, 0)
 })

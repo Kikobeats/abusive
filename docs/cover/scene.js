@@ -19,8 +19,31 @@ const MOBILE_GUTTER = 16
 const MOBILE_SCALE_MAX = 7
 const MOBILE_BOTTOM_MARGIN = 24
 const MOBILE_COPY_GAP = 24
+const MOBILE_FONT_SIZE = 11
+const MOBILE_WANDER_SHARE = 0.6
+const MOBILE_WANDER_Y = 6
+const MOBILE_ENTRY = [0.18, 18]
+const DESKTOP_FONT_SIZE = 13
+const WIDE_FONT_SIZE = 14
+const WIDE_WIDTH = 1800
+const DESKTOP_WANDER_Y_MAX = 14
+const DESKTOP_WANDER_Y_RATIO = 0.016
+const DESKTOP_ENTRY = [260, 34]
+const WORDMARK_NUDGE = 4
 const DRIFT_PX_PER_SECOND = 7
 const RING_SAMPLES = 48
+const WANDER_X_WAVES = [
+  [0.72, 0.16, -0.5],
+  [0.28, 0.37, 1.3]
+]
+const WANDER_Y_WAVE = [1, 0.21, 0.7]
+const SWAY_WAVE = [1, 0.13, 0.4]
+const ENTRY_TILT = 0.05
+const FOLLOW_STIFFNESS = 7
+const THEME_SECONDS = 0.45
+const MAX_TILT = 0.05
+const TILT_PER_VELOCITY = 0.0004
+const VELOCITY_SMOOTHING = 6
 
 export const MARK_CENTER = [MARK.size / 2, MARK.size / 2]
 const LENS_OFFSET = [MARK.center - MARK_CENTER[0], MARK.center - MARK_CENTER[1]]
@@ -50,7 +73,10 @@ export const INTRO = Object.freeze({
 })
 export const BEST_FRAME_SECONDS = 4.2
 
-const clamp01 = value => Math.min(1, Math.max(0, value))
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+const progress = (seconds, duration) => Math.min(1, seconds / duration)
+const wave = ([amplitude, frequency, phase], seconds) =>
+  amplitude * Math.sin(seconds * frequency + phase)
 const easeOutCubic = t => 1 - Math.pow(1 - t, 3)
 const easeInOutCubic = t =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -99,7 +125,7 @@ export function markBounds (angle) {
   return box
 }
 
-function swayBounds (angle) {
+export function swayBounds (angle) {
   const boxes = [angle - ANGLE_SWAY, angle, angle + ANGLE_SWAY].map(markBounds)
   return {
     left: Math.min(...boxes.map(b => b.left)),
@@ -110,7 +136,7 @@ function swayBounds (angle) {
 }
 
 function mobileLayout (width, height, textBox) {
-  const top = textBox ? textBox.bottom : height * 0.45
+  const top = textBox.bottom
   const units = swayBounds(MOBILE_ANGLE)
   const scale = Math.min(
     (width - 2 * MOBILE_GUTTER) / (units.right - units.left),
@@ -123,11 +149,12 @@ function mobileLayout (width, height, textBox) {
     top + Math.max(MOBILE_COPY_GAP, (floor - top - markHeight) * 0.5)
   const centerY = boxTop - units.top * scale
   const centerX = (width - markWidth) / 2 - units.left * scale
-  const wanderX = Math.max(0, (width - markWidth) / 2 - MOBILE_GUTTER) * 0.6
+  const wanderX =
+    ((width - markWidth) / 2 - MOBILE_GUTTER) * MOBILE_WANDER_SHARE
   return {
     mobile: true,
     angle: MOBILE_ANGLE,
-    fontSize: 11,
+    fontSize: MOBILE_FONT_SIZE,
     scrim: [0, top],
     home: [centerX, centerY],
     travel: lensTravel(
@@ -140,8 +167,8 @@ function mobileLayout (width, height, textBox) {
       scale,
       [centerX, centerY]
     ),
-    wander: [wanderX, 6],
-    entry: [width * 0.18, 18],
+    wander: [wanderX, MOBILE_WANDER_Y],
+    entry: [width * MOBILE_ENTRY[0], MOBILE_ENTRY[1]],
     scale,
     markSize: [markWidth, markHeight]
   }
@@ -161,12 +188,8 @@ function outlineClearsWordmark (angle, scale, homeX, homeY, wordmark) {
 }
 
 function desktopLayout (width, height, textBox) {
-  const textRight = textBox ? textBox.right : width * 0.42
-  const bodyRight = textBox?.bodyRight ?? textRight
-  const wordmark = {
-    right: textRight,
-    bottom: textBox?.wordmarkBottom ?? height * 0.38
-  }
+  const { bodyRight } = textBox
+  const wordmark = { right: textBox.right, bottom: textBox.wordmarkBottom }
   const units = swayBounds(DESKTOP_ANGLE)
   const sceneLeft = bodyRight + DESKTOP_TEXT_GAP + DESKTOP_WANDER_X
   const sceneRight = width - DESKTOP_RIGHT_MARGIN - DESKTOP_WANDER_X
@@ -180,31 +203,23 @@ function desktopLayout (width, height, textBox) {
     DESKTOP_SCALE_MIN,
     Math.min(DESKTOP_SCALE_MAX, widthScale, heightScale)
   )
-  let homeX = sceneRight - units.right * scale
-  const leftmost = sceneLeft - units.left * scale
-  homeX = Math.max(
-    leftmost,
-    Math.min(
-      homeX,
-      leftmost +
-        Math.max(
-          0,
-          sceneRight - sceneLeft - (units.right - units.left) * scale
-        ) *
-          0.5
-    )
-  )
+  const markWidth = (units.right - units.left) * scale
+  const room = Math.max(0, sceneRight - sceneLeft - markWidth)
+  let homeX = sceneLeft - units.left * scale + room / 2
   while (
     !outlineClearsWordmark(DESKTOP_ANGLE, scale, homeX, homeY, wordmark) &&
     homeX < sceneRight
   ) {
-    homeX += 4
+    homeX += WORDMARK_NUDGE
   }
-  const wander = [DESKTOP_WANDER_X, Math.min(14, height * 0.016)]
+  const wander = [
+    DESKTOP_WANDER_X,
+    Math.min(DESKTOP_WANDER_Y_MAX, height * DESKTOP_WANDER_Y_RATIO)
+  ]
   return {
     mobile: false,
     angle: DESKTOP_ANGLE,
-    fontSize: width > 1800 ? 14 : 13,
+    fontSize: width > WIDE_WIDTH ? WIDE_FONT_SIZE : DESKTOP_FONT_SIZE,
     scrim: [bodyRight, 0],
     home: [homeX, homeY],
     travel: lensTravel(
@@ -218,12 +233,9 @@ function desktopLayout (width, height, textBox) {
       [homeX, homeY]
     ),
     wander,
-    entry: [Math.min(260, width - homeX), 34],
+    entry: [Math.min(DESKTOP_ENTRY[0], width - homeX), DESKTOP_ENTRY[1]],
     scale,
-    markSize: [
-      (units.right - units.left) * scale,
-      (units.bottom - units.top) * scale
-    ]
+    markSize: [markWidth, (units.bottom - units.top) * scale]
   }
 }
 
@@ -235,8 +247,8 @@ export function layoutFor (width, height, textBox) {
 
 export function introState (seconds) {
   return {
-    appear: easeOutCubic(clamp01(seconds / INTRO.appear)),
-    glide: easeInOutCubic(clamp01(seconds / INTRO.glide))
+    appear: easeOutCubic(progress(seconds, INTRO.appear)),
+    glide: easeInOutCubic(progress(seconds, INTRO.glide))
   }
 }
 
@@ -245,16 +257,15 @@ export function autopilot (seconds, layout) {
   const [wx, wy] = layout.wander
   const [ex, ey] = layout.entry
   const away = 1 - introState(seconds).glide
+  const wanderX = WANDER_X_WAVES.reduce(
+    (sum, shape) => sum + wave(shape, seconds),
+    0
+  )
   return {
-    x:
-      hx +
-      wx *
-        (0.72 * Math.sin(seconds * 0.16 - 0.5) +
-          0.28 * Math.sin(seconds * 0.37 + 1.3)) +
-      ex * away,
-    y: hy + wy * Math.sin(seconds * 0.21 + 0.7) + ey * away,
+    x: hx + wx * wanderX + ex * away,
+    y: hy + wy * wave(WANDER_Y_WAVE, seconds) + ey * away,
     angle:
-      layout.angle + ANGLE_SWAY * Math.sin(seconds * 0.13 + 0.4) - 0.05 * away
+      layout.angle + ANGLE_SWAY * wave(SWAY_WAVE, seconds) - ENTRY_TILT * away
   }
 }
 
@@ -269,6 +280,31 @@ export function lensUnder (pointer, layout, angle) {
     x: lensX - (c * x - s * y) * layout.scale,
     y: lensY - (s * x + c * y) * layout.scale
   }
+}
+
+export function stepLens (state, step) {
+  state.seconds += step
+  const auto = autopilot(state.seconds, state.layout)
+  const following = state.pointer && state.seconds > INTRO.glide
+  const goal = following
+    ? lensUnder(state.pointer, state.layout, auto.angle)
+    : auto
+  if (!state.lens) state.lens = { ...auto }
+
+  const blend = 1 - Math.exp(-FOLLOW_STIFFNESS * step)
+  const previousX = state.lens.x
+  state.lens.x += (goal.x - state.lens.x) * blend
+  state.lens.y += (goal.y - state.lens.y) * blend
+  if (step > 0) {
+    const velocity = (state.lens.x - previousX) / step
+    state.velocityX +=
+      (velocity - state.velocityX) * Math.min(1, step * VELOCITY_SMOOTHING)
+  }
+  const tilt = clamp(state.velocityX * TILT_PER_VELOCITY, -MAX_TILT, MAX_TILT)
+  state.lens.angle = auto.angle + tilt
+
+  const themeStep = step / THEME_SECONDS
+  state.theme += clamp(state.themeTarget - state.theme, -themeStep, themeStep)
 }
 
 export function driftAt (seconds) {

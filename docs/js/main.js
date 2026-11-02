@@ -2,26 +2,23 @@ const PAGE_TITLE = document.title
 const SIGNATURE = /^[a-zA-Z]+\(.*\)$/
 const BACKTICKS = /`/g
 
-const HELPERS_LABEL = 'Helpers'
-
 const sidebarLabel = signature =>
-  signature.includes('), ')
-    ? HELPERS_LABEL
-    : `${signature.slice(0, signature.indexOf('('))}()`
+  `${signature.slice(0, signature.indexOf('('))}()`
 
 const markSignatures = () => {
-  document.querySelectorAll('.markdown-section h3').forEach(heading => {
-    if (SIGNATURE.test(heading.textContent.trim())) {
-      heading.classList.add('signature')
-    }
-  })
+  document
+    .querySelectorAll('.markdown-section :is(h2, h3, h4)')
+    .forEach(heading => {
+      if (SIGNATURE.test(heading.textContent.trim())) {
+        heading.classList.add('signature')
+      }
+    })
 
   document.querySelectorAll('.sidebar-nav a').forEach(link => {
     const text = link.textContent.trim()
     if (!SIGNATURE.test(text)) return
-    const label = sidebarLabel(text)
-    link.textContent = label
-    if (label !== HELPERS_LABEL) link.classList.add('signature')
+    link.textContent = sidebarLabel(text)
+    link.classList.add('signature')
   })
 }
 
@@ -61,8 +58,9 @@ const rendersLive = () =>
   !new URLSearchParams(window.location.search).has('fallback')
 
 const startCover = () => {
+  if (coverStarted) return true
   const hero = document.querySelector('[data-cover]')
-  if (coverStarted || !hero) return false
+  if (!hero) return false
   coverStarted = true
   if (rendersLive()) hero.dataset.expectLive = ''
   import(new URL(COVER_MODULE, document.baseURI).href).catch(() => {

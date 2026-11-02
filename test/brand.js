@@ -12,13 +12,13 @@ const banner = import('../docs/brand/banner.js')
 const ROOT = join(__dirname, '..')
 const read = (file, encoding) => readFileSync(join(ROOT, file), encoding)
 
-const JPEG_START_OF_FRAME = [0xc0, 0xc1, 0xc2]
+const JPEG_BASELINE_FRAME = 0xc0
 
 const jpegSize = buffer => {
   let offset = 2
   while (offset < buffer.length) {
     const marker = buffer[offset + 1]
-    if (JPEG_START_OF_FRAME.includes(marker)) {
+    if (marker === JPEG_BASELINE_FRAME) {
       return {
         height: buffer.readUInt16BE(offset + 5),
         width: buffer.readUInt16BE(offset + 7)
@@ -26,7 +26,7 @@ const jpegSize = buffer => {
     }
     offset += 2 + buffer.readUInt16BE(offset + 2)
   }
-  throw new Error('no JPEG frame header')
+  throw new Error('no baseline JPEG frame header')
 }
 
 const metaContent = (html, attribute, name) =>
@@ -62,7 +62,8 @@ test('the whole mark stays inside its square box', async t => {
     toMark(from, half),
     toMark(to, -half),
     toMark(to, half),
-    [MARK.center - MARK.ring.outer, MARK.center - MARK.ring.outer]
+    [MARK.center - MARK.ring.outer, MARK.center - MARK.ring.outer],
+    [MARK.center + MARK.ring.outer, MARK.center + MARK.ring.outer]
   ]
   for (const [x, y] of points) {
     t.true(x >= 0 && x <= MARK.size, `x=${x} leaves the box`)

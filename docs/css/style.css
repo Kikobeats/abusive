@@ -315,11 +315,6 @@ main > .content {
   margin-top: 0;
 }
 
-.markdown-section h2#contents,
-.markdown-section h2#contents + ul {
-  display: none;
-}
-
 .markdown-section :is(h1, h2, h3, h4) {
   font-family: var(--heading-font);
   font-weight: 700;
@@ -350,11 +345,14 @@ main > .content {
   margin: 40px 0 12px;
 }
 
-.markdown-section h3.signature {
+.markdown-section .signature {
   font-family: var(--code-font);
-  font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.markdown-section h3.signature {
+  font-size: 1.15rem;
 }
 
 .markdown-section h4 {

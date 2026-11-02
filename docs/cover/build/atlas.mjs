@@ -11,43 +11,27 @@ const CURVE_STEPS = 8
 const font = opentype.parse(readFileSync(FONT_FILE).buffer.slice(0))
 const unitsPerEm = font.unitsPerEm
 
+const quadratic = (from, { x1, y1, x, y }, t) => {
+  const u = 1 - t
+  return [
+    u * u * from[0] + 2 * u * t * x1 + t * t * x,
+    u * u * from[1] + 2 * u * t * y1 + t * t * y
+  ]
+}
+
 function flatten (path) {
   const segments = []
-  let start = null
   let pen = null
-  const line = (a, b) => segments.push([a[0], a[1], b[0], b[1]])
+  const lineTo = next => {
+    segments.push([pen[0], pen[1], next[0], next[1]])
+    pen = next
+  }
   for (const command of path.commands) {
-    if (command.type === 'M') {
-      start = pen = [command.x, command.y]
-    } else if (command.type === 'L') {
-      const next = [command.x, command.y]
-      line(pen, next)
-      pen = next
-    } else if (command.type === 'Q') {
-      for (let i = 1; i <= CURVE_STEPS; i++) {
-        const t = i / CURVE_STEPS
-        const u = 1 - t
-        const next = [
-          u * u * pen[0] + 2 * u * t * command.x1 + t * t * command.x,
-          u * u * pen[1] + 2 * u * t * command.y1 + t * t * command.y
-        ]
-        line(i === 1 ? pen : segments.at(-1).slice(2), next)
-      }
-      pen = [command.x, command.y]
-    } else if (command.type === 'C') {
-      for (let i = 1; i <= CURVE_STEPS; i++) {
-        const t = i / CURVE_STEPS
-        const u = 1 - t
-        const next = [
-          u * u * u * pen[0] + 3 * u * u * t * command.x1 + 3 * u * t * t * command.x2 + t * t * t * command.x,
-          u * u * u * pen[1] + 3 * u * u * t * command.y1 + 3 * u * t * t * command.y2 + t * t * t * command.y
-        ]
-        line(i === 1 ? pen : segments.at(-1).slice(2), next)
-      }
-      pen = [command.x, command.y]
-    } else if (command.type === 'Z') {
-      if (pen && start && (pen[0] !== start[0] || pen[1] !== start[1])) line(pen, start)
-      pen = start
+    if (command.type === 'M') pen = [command.x, command.y]
+    else if (command.type === 'L') lineTo([command.x, command.y])
+    else if (command.type === 'Q') {
+      const from = pen
+      for (let i = 1; i <= CURVE_STEPS; i++) lineTo(quadratic(from, command, i / CURVE_STEPS))
     }
   }
   return segments
@@ -87,9 +71,7 @@ for (let index = 0; index < ATLAS.glyphCount; index++) {
     for (let tx = 0; tx < ATLAS.cellWidth; tx++) {
       const emX = (tx + 0.5 - ATLAS.pad) / ATLAS.texelsPerEm
       const emUp = ATLAS.ascentEm - (ty + 0.5 - ATLAS.pad) / ATLAS.texelsPerEm
-      const distanceTexels = segments.length
-        ? signedDistance(segments, emX * unitsPerEm, -emUp * unitsPerEm) / fontUnitsPerTexel
-        : -ATLAS.spread
+      const distanceTexels = signedDistance(segments, emX * unitsPerEm, -emUp * unitsPerEm) / fontUnitsPerTexel
       const value = 0.5 + 0.5 * Math.max(-1, Math.min(1, distanceTexels / ATLAS.spread))
       pixels[(originY + ty) * width + originX + tx] = Math.round(value * 255)
     }

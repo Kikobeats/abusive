@@ -1,29 +1,21 @@
 import { lensShader } from './shaders.js'
 import {
   BEST_FRAME_SECONDS,
-  INTRO,
-  autopilot,
   createLensEffect,
   layoutFor,
-  lensUnder,
-  sceneParams
+  sceneParams,
+  stepLens
 } from './scene.js'
 
 const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 const DPR_RANGE = [1, 2]
-const FOLLOW_STIFFNESS = 7
-const THEME_SECONDS = 0.45
 const MAX_STEP_SECONDS = 0.05
+const COPIED_MS = 1400
 
 const cover = document.querySelector('[data-cover]')
 const canvas = cover.querySelector('canvas')
 const textBlock = cover.querySelector('[data-cover-text]')
-const MAX_TILT = 0.05
-
-setupCopy()
-start().catch(error =>
-  showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
-)
+const copyReset = new WeakMap()
 
 let stopRendering = () => {}
 
@@ -57,6 +49,11 @@ function contentRight (element) {
   const range = document.createRange()
   range.selectNodeContents(element)
   return range.getBoundingClientRect().right
+}
+
+function measureLayout () {
+  const rect = cover.getBoundingClientRect()
+  return layoutFor(rect.width, rect.height, textBoxFor(rect))
 }
 
 function textBoxFor (rect) {
@@ -111,6 +108,7 @@ async function start () {
 
   const canvasSurface = vgpu.surface(gpu, canvas, { dpr: DPR_RANGE })
   const state = createState()
+  stepLens(state, 0)
   const fx = createLensEffect(
     vgpu,
     gpu,
@@ -133,11 +131,11 @@ async function start () {
   bindInput(state)
 
   let loop = null
-  let last = 0
+  let last = null
   let firstFrame = true
   const tick = frame => {
     const now = performance.now() / 1000
-    const step = last ? Math.min(MAX_STEP_SECONDS, now - last) : 0
+    const step = last === null ? 0 : Math.min(MAX_STEP_SECONDS, now - last)
     last = now
     advance(state, step)
     fx.set({ params: paramsFor(state, canvasSurface) })
@@ -160,13 +158,12 @@ async function start () {
     const run =
       !hasFailed() && onScreen && document.visibilityState === 'visible'
     if (run && !loop) {
-      last = 0
+      last = null
       loop = vgpu.frameLoop(gpu, tick)
     } else if (!run && loop) {
       loop.stop()
       loop = null
     }
-    cover.dataset.running = String(Boolean(loop))
   }
   new window.IntersectionObserver(([entry]) => {
     onScreen = entry.isIntersecting
@@ -182,9 +179,9 @@ function createState () {
     seconds: BEST_FRAME_SECONDS,
     theme: readTheme(),
     themeTarget: readTheme(),
-    layout: null,
+    layout: measureLayout(),
     lens: null,
-    velocity: { x: 0, y: 0 },
+    velocityX: 0,
     pointer: null
   }
 }
@@ -212,55 +209,18 @@ function bindInput (state) {
 }
 
 function advance (state, step) {
-  state.seconds += step
-  const rect = cover.getBoundingClientRect()
-  if (!state.layout) {
-    state.layout = layoutFor(rect.width, rect.height, textBoxFor(rect))
-  }
-
-  const auto = autopilot(state.seconds, state.layout)
-  const following = state.pointer && state.seconds > INTRO.glide
-  const goal = following
-    ? lensUnder(state.pointer, state.layout, auto.angle)
-    : auto
-  if (!state.lens) state.lens = { ...auto }
-
-  const blend = 1 - Math.exp(-FOLLOW_STIFFNESS * step)
-  const previous = { x: state.lens.x, y: state.lens.y }
-  state.lens.x += (goal.x - state.lens.x) * blend
-  state.lens.y += (goal.y - state.lens.y) * blend
-  if (step > 0) {
-    state.velocity.x +=
-      ((state.lens.x - previous.x) / step - state.velocity.x) *
-      Math.min(1, step * 6)
-  }
-  const tilt = Math.max(
-    -MAX_TILT,
-    Math.min(MAX_TILT, state.velocity.x * 0.0004)
-  )
-  state.lens.angle = auto.angle + tilt
-
-  const themeStep = step / THEME_SECONDS
-  state.theme += Math.max(
-    -themeStep,
-    Math.min(themeStep, state.themeTarget - state.theme)
-  )
+  if (!state.layout) state.layout = measureLayout()
+  stepLens(state, step)
 }
 
-function paramsFor (state, canvasSurface) {
-  const rect = cover.getBoundingClientRect()
-  const layout =
-    state.layout ?? layoutFor(rect.width, rect.height, textBoxFor(rect))
-  const lens = state.lens ?? autopilot(state.seconds, layout)
-  const dpr = canvasSurface.dpr
-  const width = canvasSurface.size[0] / dpr
-  const height = canvasSurface.size[1] / dpr
+function paramsFor ({ seconds, theme, layout, lens }, canvasSurface) {
+  const { dpr, size } = canvasSurface
   return sceneParams({
-    width,
-    height,
+    width: size[0] / dpr,
+    height: size[1] / dpr,
     dpr,
-    seconds: state.seconds,
-    theme: state.theme,
+    seconds,
+    theme,
     layout,
     lens
   })
@@ -272,9 +232,6 @@ function exposeTimings (gpuTimer) {
     if (typeof spans.lens === 'number') samples.push(spans.lens)
   })
 }
-
-const COPIED_MS = 1400
-const copyReset = new WeakMap()
 
 function scheduleReset (button, reset) {
   const pending = copyReset.get(button)
@@ -322,3 +279,8 @@ function setupCopy () {
     copyPrompt.querySelector('[data-copy-prompt-label]')
   )
 }
+
+setupCopy()
+start().catch(error =>
+  showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
+)
