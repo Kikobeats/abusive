@@ -55,8 +55,13 @@ const redisStore = (
     }
     throw new Error(`could not claim \`${key}\``)
   }
+  const peek = async key => {
+    const redis = typeof client === 'function' ? await client() : client
+    return redis.get(`${prefix}${key}`)
+  }
   return {
-    claim: (key, value) => withinTimeout(timeoutMs, () => claim(key, value))
+    claim: (key, value) => withinTimeout(timeoutMs, () => claim(key, value)),
+    peek: key => withinTimeout(timeoutMs, () => peek(key))
   }
 }
 

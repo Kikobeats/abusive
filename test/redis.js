@@ -141,3 +141,27 @@ test('the shortest ttlMs still claims', async t => {
   await redisStore(client, { ttlMs: 1 }).claim('k', 'v')
   t.is(client.calls[0][4], 1)
 })
+
+test('peek reads the holder with its prefix, and never writes', async t => {
+  const client = fakeRedis()
+  const store = redisStore(client, { prefix: 'preview:' })
+  t.is(await store.peek('ip:a'), null)
+  await store.claim('ip:a', 'jane')
+  t.is(await store.peek('ip:a'), 'jane')
+  t.deepEqual(
+    client.calls.map(([name]) => name),
+    ['set']
+  )
+})
+
+test('peek uses a client from a function', async t => {
+  const client = fakeRedis()
+  client.values.set('abusive:k', 'v')
+  t.is(await redisStore(async () => client).peek('k'), 'v')
+})
+
+test('timeoutMs rejects a peek on a stalled Redis', async t => {
+  const stalled = { get: () => new Promise(() => {}) }
+  const store = redisStore(stalled, { timeoutMs: 10 })
+  await t.throwsAsync(store.peek('k'), { message: /timed out/ })
+})

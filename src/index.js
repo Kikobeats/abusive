@@ -237,6 +237,23 @@ const createAbusive = ({
     }
   }
 
+  const singleAddressOf = email => {
+    if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
+      return null
+    }
+    const parts = parseEmail(email)
+    if (parts === null) return null
+    const address = `${parts.local}@${parts.domain}`
+    return SINGLE_ADDRESS.test(address) ? address : null
+  }
+
+  const isIpAbusive = (email, address, ip, verified) =>
+    reportingFailure(email, () =>
+      verified === true
+        ? ipRule.takeIp(address, ip)
+        : ipRule.isIpTakenByAnother(address, ip)
+    )
+
   const reasonOf = async ({ email, parts, ip, verified }) => {
     if (
       lookup != null &&
@@ -244,13 +261,10 @@ const createAbusive = ({
     ) {
       return SIBLING
     }
-    if (verified !== true || ipRule === null) return null
-    const address = `${parts.local}@${parts.domain}`
-    if (!SINGLE_ADDRESS.test(address)) return null
-    const isTaken = await reportingFailure(email, () =>
-      ipRule.isIpUsedByAnother(address, ip)
-    )
-    return isTaken ? IP : null
+    if (ipRule === null) return null
+    const address = singleAddressOf(email)
+    if (address === null) return null
+    return (await isIpAbusive(email, address, ip, verified)) ? IP : null
   }
 
   const isAbusive = async check => {
@@ -271,13 +285,25 @@ const createAbusive = ({
     }
   }
 
+  const takeIp = async check => {
+    try {
+      const { email, ip } = check ?? {}
+      const address = ipRule === null ? null : singleAddressOf(email)
+      if (address === null) return
+      await reportingFailure(email, () => ipRule.takeIp(address, ip))
+    } catch (error) {
+      notifyQuietly(onError, { error })
+    }
+  }
+
   return {
     findSibling,
     isAbusive,
     isRejectedEmail,
     isRejectedDomain,
     isSibling,
-    parseEmail
+    parseEmail,
+    takeIp
   }
 }
 

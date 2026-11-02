@@ -37,19 +37,19 @@ const Redis = require('ioredis')
 const stripeLookup = require('abusive/stripe')
 const redisStore = require('abusive/redis')
 
-const { isAbusive, isRejectedEmail } = require('abusive')({
+const { isAbusive, isRejectedEmail, takeIp } = require('abusive')({
   rejectedDomains: require('free-email-domains'),
   sibling: { lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY), { limit: 500 }) },
   ip: { store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }) },
   secret: process.env.ABUSIVE_SECRET
 })
 
-// Anyone can call this: it only looks for siblings.
+// Before the signup is created. It only reads, so anyone can call it.
 await isAbusive({ email: 'destek6@acme.com' }) // => true when destek@acme.com exists
+await isAbusive({ email: 'john@gmail.com', ip }) // => true when another address took this IP
 
-// Once the address is verified, for an account you have not accepted yet.
-await isAbusive({ email: 'jane@gmail.com', ip, verified: true }) // => false
-await isAbusive({ email: 'john@gmail.com', ip, verified: true }) // => true, same IP
+// Once the address is verified: the IP becomes this address's.
+await takeIp({ email: 'jane@gmail.com', ip })
 ```
 
 Each rule is on when its group is present. `isRejectedEmail` stays separate, because refusing a list of domains is your policy and not abuse.
@@ -99,9 +99,9 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 |---|---|
 | `email` | The address. |
 | `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. If it is your proxy's address, everyone after the first signup is refused. |
-| `verified` | `true` once the address is verified, for an account you have not accepted yet. Only then is the IP rule applied and the IP taken, so an endpoint anyone can call cannot take one. Defaults to `false`. |
+| `verified` | `true` once the address is verified, for an account you have not accepted yet: the IP is taken, and it is abusive when another address already holds it. Otherwise the IP is only read, so an endpoint anyone can call cannot take one, and the read needs a store with `peek`. Defaults to `false`. |
 
-It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
+It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
 
 It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs`, as above, and a timeout on your lookup's client.
 
@@ -112,9 +112,17 @@ It resolves `true` or `false` and never rejects. A check that fails counts as no
 
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set(key, value, 'NX')`, or `set(key, value, 'PX', ms, 'NX')` with `ttlMs`, and `get`, or a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit: [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error, and `@upstash/redis` fails every check. Use a custom store with those. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken. Without it, an IP stays taken forever. Both must be positive integers, and `timeoutMs` at most 2147483647, or `redisStore` throws. To keep IPs somewhere else, pass an object with one method:
+`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set(key, value, 'NX')`, or `set(key, value, 'PX', ms, 'NX')` with `ttlMs`, and `get`, or a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit: [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error, and `@upstash/redis` fails every check. Use a custom store with those. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken. Without it, an IP stays taken forever. Both must be positive integers, and `timeoutMs` at most 2147483647, or `redisStore` throws. To keep IPs somewhere else, pass an object with these methods:
 
 `claim(key, value)` atomically stores `value` if `key` is free, and resolves whoever holds it. Keys and values arrive hashed, and how long they last is up to the store. That being atomic is what stops two signups at the same moment from both taking an IP.
+
+`peek(key)`, optional, resolves whoever holds `key`, or `null`, without writing. Without it, an unverified `isAbusive` skips the IP rule.
+
+## takeIp({ email, ip })
+
+Takes the IP for the address, once the address is verified. If another address already holds it, nothing changes. It never looks for siblings, never calls `onAbusive`, resolves `undefined` and never rejects: a failure reaches `onError`. Without `ip.store`, or with a missing or malformed IP or address, it does nothing.
+
+Check with `isAbusive({ email, ip })` before creating the account and take with `takeIp` after verification, so an address that is never verified, or a typo the person then corrects, never holds the IP. Two signups from one IP at the same moment can both pass the check; only the first `takeIp` wins.
 
 ## Lookups
 
@@ -211,6 +219,7 @@ It must be a positive integer: an invalid value throws a `TypeError`, and an inv
 | Method | Returns |
 |---|---|
 | `.isAbusive({ email, ip, verified })` | `Promise` of `true` or `false`. See [isAbusive](#isabusive-email-ip-verified-). |
+| `.takeIp({ email, ip })` | `Promise` of `undefined`. See [takeIp](#takeip-email-ip-). |
 | `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `sibling.min`), or `null`. |
 | `.isSibling(candidate, existing)` | `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`. |
 | `.isRejectedEmail(email)` | `true` when the address is on a domain in `rejectedDomains`. |

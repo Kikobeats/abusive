@@ -15,6 +15,7 @@ export type Lookup = (target: LookupTarget) =>
 
 export interface AbusiveStore {
   claim: (key: string, value: string) => Promise<string>
+  peek?: (key: string) => Promise<string | null>
 }
 
 export type AbusiveReason = 'ip' | 'sibling'
@@ -50,6 +51,7 @@ export interface Abusive {
   isRejectedDomain: (domain: string) => boolean
   isSibling: (candidate: string | EmailParts, existing: string | EmailParts) => boolean
   parseEmail: (email: string) => EmailParts | null
+  takeIp: (check: { email: string, ip?: string | null }) => Promise<void>
 }
 
 export function parseEmail (email: string): EmailParts | null

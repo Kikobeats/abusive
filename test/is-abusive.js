@@ -15,14 +15,15 @@ const memoryStore = () => {
     claim: async (key, value) => {
       if (!values.has(key)) values.set(key, value)
       return values.get(key)
-    }
+    },
+    peek: async key => values.get(key) ?? null
   }
 }
 
 const abusive = ({ lookup, store = memoryStore(), ...rest } = {}) => {
   const reasons = []
   const errors = []
-  const { isAbusive } = createAbusive({
+  const { isAbusive, takeIp } = createAbusive({
     rejectedDomains: dataset,
     secret: 'secret',
     onAbusive: ({ reason }) => reasons.push(reason),
@@ -36,6 +37,7 @@ const abusive = ({ lookup, store = memoryStore(), ...rest } = {}) => {
     reasons,
     errors,
     isAbusive,
+    takeIp,
     signup: (email, ip = IP) => isAbusive({ email, ip, verified: true })
   }
 }
@@ -85,15 +87,125 @@ test('a missing or malformed IP skips the rule and stores nothing', async t => {
   t.deepEqual(errors, [])
 })
 
-test('only a verified address takes an IP or is judged by it', async t => {
-  const { isAbusive, store, signup } = abusive()
+test('an unverified address never takes an IP', async t => {
+  const { isAbusive, store } = abusive()
   for (const verified of [undefined, false, 'true', 1]) {
     t.false(await isAbusive({ email: 'a@acme.com', ip: IP, verified }))
   }
   t.is(store.values.size, 0)
+})
+
+test('an unverified address is abusive on an IP another address took', async t => {
+  const { isAbusive, signup, store, reasons } = abusive()
+  await signup('a@acme.com')
+  for (const verified of [undefined, false, 'true', 1]) {
+    t.true(await isAbusive({ email: 'b@other.com', ip: IP, verified }))
+  }
+  t.false(await isAbusive({ email: 'A@Acme.com', ip: IP }))
+  t.false(await isAbusive({ email: 'b@other.com', ip: '203.0.113.8' }))
+  t.is(store.values.size, 1)
+  t.deepEqual(reasons, ['ip', 'ip', 'ip', 'ip'])
+})
+
+test('an unverified address is judged by its IPv6 network', async t => {
+  const { isAbusive, signup } = abusive()
+  await signup('a@acme.com', '2001:db8:1:2::a')
+  t.true(await isAbusive({ email: 'b@other.com', ip: '2001:db8:1:2::b' }))
+  t.false(await isAbusive({ email: 'b@other.com', ip: '2001:db8:1:3::a' }))
+})
+
+test('a store without peek skips the unverified IP check', async t => {
+  const store = memoryStore()
+  delete store.peek
+  const { isAbusive, signup, errors } = abusive({ store })
   await signup('a@acme.com')
   t.false(await isAbusive({ email: 'b@other.com', ip: IP }))
   t.true(await signup('b@other.com'))
+  t.deepEqual(errors, [])
+})
+
+test('a failed peek is not abusive and is reported', async t => {
+  const store = memoryStore()
+  store.peek = async () => {
+    throw new Error('redis down')
+  }
+  const { isAbusive, errors } = abusive({ store })
+  t.false(await isAbusive({ email: 'b@other.com', ip: IP }))
+  t.deepEqual(errors, ['redis down'])
+})
+
+test('takeIp takes a free IP for the address, and never takes it from another', async t => {
+  const { takeIp, isAbusive, store } = abusive()
+  t.is(await takeIp({ email: 'a@acme.com', ip: IP }), undefined)
+  t.is(store.values.size, 1)
+  await takeIp({ email: 'b@other.com', ip: IP })
+  t.is(store.values.size, 1)
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP }))
+  t.true(await isAbusive({ email: 'b@other.com', ip: IP }))
+})
+
+test('takeIp never reports the address as abusive and never looks for siblings', async t => {
+  let lookups = 0
+  const lookup = async function * () {
+    lookups++
+    yield 'destek@acme.com'
+  }
+  const { takeIp, reasons, store } = abusive({ lookup })
+  await takeIp({ email: 'a@acme.com', ip: IP })
+  await takeIp({ email: 'destek6@acme.com', ip: IP })
+  t.is(lookups, 0)
+  t.deepEqual(reasons, [])
+  t.is(store.values.size, 1)
+})
+
+test('takeIp skips a missing or malformed IP or address', async t => {
+  const { takeIp, store, errors } = abusive()
+  for (const ip of [undefined, null, '', 'not-an-ip', '999.1.1.1']) {
+    await takeIp({ email: 'a@acme.com', ip })
+  }
+  for (const email of [
+    undefined,
+    null,
+    7,
+    'nope',
+    'a@b@acme.com',
+    'a b@acme.com',
+    addressOfLength(321)
+  ]) {
+    await takeIp({ email, ip: IP })
+  }
+  t.is(store.values.size, 0)
+  t.deepEqual(errors, [])
+})
+
+test('takeIp never rejects, and reports a failure', async t => {
+  const failing = abusive({
+    store: {
+      claim: async () => {
+        throw new Error('redis down')
+      }
+    }
+  })
+  t.is(await failing.takeIp({ email: 'a@acme.com', ip: IP }), undefined)
+  t.is(await failing.takeIp(undefined), undefined)
+  t.is(
+    await failing.takeIp({
+      get email () {
+        throw new Error('boom')
+      }
+    }),
+    undefined
+  )
+  t.deepEqual(failing.errors, ['redis down', 'boom'])
+})
+
+test('takeIp without an IP rule does nothing, and that is no error', async t => {
+  const errors = []
+  const { takeIp } = createAbusive({
+    onError: ({ error }) => errors.push(error)
+  })
+  t.is(await takeIp({ email: 'a@acme.com', ip: IP }), undefined)
+  t.deepEqual(errors, [])
 })
 
 test('nothing is stored in the clear', async t => {
