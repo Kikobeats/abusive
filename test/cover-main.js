@@ -789,25 +789,6 @@ test.serial(
 )
 
 test.serial(
-  'the pause button stops the scene until it is pressed again',
-  async t => {
-    const page = await openCover()
-    const pause = page.cover.querySelector('[data-pause]')
-    t.is(pause.getAttribute('aria-pressed'), 'false')
-    pause.click()
-    t.is(pause.getAttribute('aria-pressed'), 'true')
-    t.is(page.gpu.loop, null)
-    page.document.dispatchEvent(new page.window.Event('visibilitychange'))
-    page.observers.intersection([{ isIntersecting: true }])
-    t.is(page.gpu.loop, null)
-    pause.click()
-    t.is(pause.getAttribute('aria-pressed'), 'false')
-    t.not(page.gpu.loop, null)
-    page.close()
-  }
-)
-
-test.serial(
   'turning on reduced motion while the page is open drops to the still frame',
   async t => {
     const page = await openCover()
@@ -833,7 +814,6 @@ test.serial(
     const page = await openCover()
     page.tick()
     page.flushFrames()
-    const pause = page.cover.querySelector('[data-pause]')
     page.destroy()
     t.is(page.gpu.loop, null)
     t.true(page.gpu.disposed)
@@ -842,8 +822,6 @@ test.serial(
       page.outsideListeners.every(signal => signal?.aborted),
       'a document or media listener outlives the scene'
     )
-    pause.click()
-    t.is(pause.getAttribute('aria-pressed'), 'false')
     t.deepEqual(page.observers.disconnected.sort(), ['intersection', 'resize'])
     t.deepEqual(page.pendingDelays(), [])
     page.setVisibility('visible')

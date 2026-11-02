@@ -63,7 +63,6 @@ function exposeTimings (gpuTimer) {
 export function mountScene (cover) {
   const canvas = cover.querySelector('canvas')
   const textBlock = cover.querySelector('[data-cover-text]')
-  const pauseButton = cover.querySelector('[data-pause]')
 
   const teardown = new AbortController()
   const { signal } = teardown
@@ -177,13 +176,9 @@ export function mountScene (cover) {
     }
 
     let onScreen = true
-    let paused = false
     const sync = () => {
       const run =
-        !stopped() &&
-        !paused &&
-        onScreen &&
-        document.visibilityState === 'visible'
+        !stopped() && onScreen && document.visibilityState === 'visible'
       if (run && !loop) {
         last = null
         loop = vgpu.frameLoop(gpu, tick)
@@ -198,15 +193,6 @@ export function mountScene (cover) {
     })
     visibility.observe(cover)
     document.addEventListener('visibilitychange', sync, { signal })
-    pauseButton.addEventListener(
-      'click',
-      () => {
-        paused = !paused
-        pauseButton.setAttribute('aria-pressed', String(paused))
-        sync()
-      },
-      { signal }
-    )
     stopRendering = sync
     release = () => {
       release = () => {}
