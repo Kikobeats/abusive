@@ -1,5 +1,4 @@
 import { mkdirSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PNG } from 'pngjs'
 import sharp from 'sharp'
@@ -16,14 +15,14 @@ const TEXT_BOXES = JSON.parse(readFileSync(new URL('./text-boxes.json', import.m
 const STILL_SECONDS = BEST_FRAME_SECONDS
 const SEQUENCE_SECONDS = [0.2, 0.6, 1.0, 1.4, 1.8, 2.2, 2.6, 3.0]
 
-export const FRAMES = [
+const FRAMES = [
   { name: 'fallback-dark', width: 1440, height: 900, dpr: 2, theme: 0, text: TEXT_BOXES.desktop },
   { name: 'fallback-light', width: 1440, height: 900, dpr: 2, theme: 1, text: TEXT_BOXES.desktop },
   { name: 'fallback-dark-mobile', width: 390, height: 844, dpr: 2, theme: 0, text: TEXT_BOXES.mobile },
   { name: 'fallback-light-mobile', width: 390, height: 844, dpr: 2, theme: 1, text: TEXT_BOXES.mobile }
 ]
 
-export async function renderFrame (gpu, frameSpec, seconds = STILL_SECONDS) {
+async function renderFrame (gpu, frameSpec, seconds = STILL_SECONDS) {
   const { width, height, dpr, theme, text } = frameSpec
   const layout = layoutFor(width, height, text)
   const lens = autopilot(seconds, layout)
@@ -38,9 +37,17 @@ export async function renderFrame (gpu, frameSpec, seconds = STILL_SECONDS) {
 
 const toImage = ({ pixels, width, height }) => sharp(Buffer.from(pixels), { raw: { width, height, channels: 4 } }).removeAlpha()
 
-async function renderStills (gpu, only, out) {
+function framesFor (mode) {
+  const frames = FRAMES.filter((frame) => mode === 'all' || frame.name === mode)
+  if (frames.length === 0) {
+    throw new Error(`unknown frame "${mode}", expected all, sequence or one of ${FRAMES.map((frame) => frame.name).join(', ')}`)
+  }
+  return frames
+}
+
+async function renderStills (gpu, frames, out) {
   mkdirSync(`${out}/scratch`, { recursive: true })
-  for (const spec of FRAMES.filter((f) => !only || only === 'all' || f.name === only)) {
+  for (const spec of frames) {
     const frame = await renderFrame(gpu, spec)
     await toImage(frame).webp({ quality: 82, effort: 6 }).toFile(`${out}/${spec.name}.webp`)
     await toImage(frame).png().toFile(`${out}/scratch/${spec.name}.png`)
@@ -67,12 +74,8 @@ async function renderSequence (gpu, out) {
     .toFile(`${out}/reveal-sequence.png`)
 }
 
-const entry = process.argv[1]
-if (entry && fileURLToPath(import.meta.url) === resolve(entry)) {
-  const mode = process.argv[2] ?? 'all'
-  const out = process.argv[3] ?? ROOT
-  const gpu = await vgpu.init()
-  if (mode === 'sequence') await renderSequence(gpu, out)
-  else await renderStills(gpu, mode, out)
-  gpu.dispose()
-}
+const [mode = 'all', out] = process.argv.slice(2)
+const gpu = await vgpu.init()
+if (mode === 'sequence') await renderSequence(gpu, out ?? `${ROOT}scratch`)
+else await renderStills(gpu, framesFor(mode), out ?? ROOT)
+gpu.dispose()

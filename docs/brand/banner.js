@@ -34,6 +34,29 @@ const CORNER_GLOW = [
   [1, 0]
 ]
 
+const BANNER_URL = /static\/banner\.jpg(\?v=[0-9a-f]+)?"/g
+const DITHER_SEED = 0x6f6e65
+const CHANNEL_MAX = 255
+
+export const versionBannerUrls = (html, version) =>
+  html.replace(BANNER_URL, `static/banner.jpg?v=${version}"`)
+
+const seededRandom = seed => () => {
+  seed = (seed + 0x6d2b79f5) | 0
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+export const dither = pixels => {
+  const random = seededRandom(DITHER_SEED)
+  for (let i = 0; i < pixels.length; i++) {
+    const noise = Math.round(random() + random() - 1)
+    pixels[i] = Math.min(CHANNEL_MAX, Math.max(0, pixels[i] + noise))
+  }
+  return pixels
+}
+
 const translate = (x, y) => `translate(${+x.toFixed(2)} ${+y.toFixed(2)})`
 
 const lockup = ({ fonts, textPath }) => {

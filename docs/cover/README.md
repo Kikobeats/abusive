@@ -23,4 +23,4 @@ $ npm install
 $ npm run build
 ```
 
-`build/atlas.mjs` draws the JetBrains Mono glyph atlas, `build/prepare.mjs` prepares the shader, and `build/render.mjs` renders the fallback frames headlessly with `vgpu/node`, using the copy's measured boxes in `build/text-boxes.json`. `prepare.mjs` strips the local path before writing `shaders.js`, so that file does not depend on the directory the build runs from.
+`build/atlas.mjs` draws the JetBrains Mono glyph atlas, `build/prepare.mjs` prepares the shader, and `build/render.mjs` renders the fallback frames headlessly with `vgpu/node`, using the copy's measured boxes in `build/text-boxes.json`. `node build/render.mjs <frame>` renders one frame by name (`fallback-dark`, `fallback-light`, `fallback-dark-mobile`, `fallback-light-mobile`), and every still also gets a PNG copy in the ignored `scratch/` folder. `node build/render.mjs sequence [dir]` writes the intro as frames and a contact sheet to `dir`, `scratch/` by default. `prepare.mjs` strips the local path before writing `shaders.js`, so that file does not depend on the directory the build runs from.

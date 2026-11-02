@@ -93,3 +93,42 @@ test('the declared banner size is the rendered banner size', async t => {
   t.is(Number(metaContent(html, 'property', 'og:image:width')), size.width)
   t.is(Number(metaContent(html, 'property', 'og:image:height')), size.height)
 })
+
+test('the banner URLs get the new version whether or not they had one', async t => {
+  const { versionBannerUrls } = await banner
+  const html = [
+    '<meta content="https://abusive.js.org/static/banner.jpg" />',
+    '<meta content="https://abusive.js.org/static/banner.jpg?v=0123abcd" />',
+    '<link href="static/banner.png" />'
+  ].join('\n')
+  t.is(
+    versionBannerUrls(html, 'feedbeef'),
+    [
+      '<meta content="https://abusive.js.org/static/banner.jpg?v=feedbeef" />',
+      '<meta content="https://abusive.js.org/static/banner.jpg?v=feedbeef" />',
+      '<link href="static/banner.png" />'
+    ].join('\n')
+  )
+})
+
+const DITHER_SAMPLE = 4096
+
+test('the banner dither moves a channel by at most one and never wraps', async t => {
+  const { dither } = await banner
+  for (const [value, low, high] of [
+    [0, 0, 1],
+    [128, 127, 129],
+    [255, 254, 255]
+  ]) {
+    const pixels = dither(Buffer.alloc(DITHER_SAMPLE, value))
+    t.true(
+      pixels.every(channel => channel >= low && channel <= high),
+      `${value}`
+    )
+    t.true(
+      pixels.some(channel => channel !== value),
+      `${value} never moved`
+    )
+    t.deepEqual(pixels, dither(Buffer.alloc(DITHER_SAMPLE, value)))
+  }
+})

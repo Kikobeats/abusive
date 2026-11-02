@@ -4,13 +4,12 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import opentype from 'opentype.js'
 import sharp from 'sharp'
-import { BANNER, bannerSvg } from './banner.js'
+import { BANNER, bannerSvg, dither, versionBannerUrls } from './banner.js'
 import { iconSvg, markSvg } from './mark.js'
 
 const require = createRequire(import.meta.url)
 const STATIC = new URL('../../static/', import.meta.url)
 const INDEX = new URL('../../index.html', import.meta.url)
-const BANNER_URL = /static\/banner\.jpg(\?v=[0-9a-f]+)?"/g
 const ICON_SIZES = { 'logo.png': 512, 'favicon-32x32.png': 32 }
 
 const font = (pkg, file) => {
@@ -57,23 +56,6 @@ for (const [name, size] of Object.entries(ICON_SIZES)) {
   console.log(`static/${name}`)
 }
 
-const DITHER_SEED = 0x6f6e65
-
-const seededRandom = seed => () => {
-  seed = (seed + 0x6d2b79f5) | 0
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-}
-
-const dither = pixels => {
-  const random = seededRandom(DITHER_SEED)
-  for (let i = 0; i < pixels.length; i++) {
-    pixels[i] = Math.min(255, Math.max(0, pixels[i] + Math.round(random() + random() - 1)))
-  }
-  return pixels
-}
-
 const banner = bannerSvg({ fonts: FONTS, textPath })
 const { data, info } = await sharp(Buffer.from(banner), { density: 72 * BANNER.scale })
   .resize(BANNER.width * BANNER.scale, BANNER.height * BANNER.scale)
@@ -86,5 +68,5 @@ await sharp(dither(data), { raw: info })
 console.log('static/banner.jpg')
 
 const version = createHash('sha256').update(readFileSync(new URL('banner.jpg', STATIC))).digest('hex').slice(0, 8)
-writeFileSync(INDEX, readFileSync(INDEX, 'utf8').replace(BANNER_URL, `static/banner.jpg?v=${version}"`))
+writeFileSync(INDEX, versionBannerUrls(readFileSync(INDEX, 'utf8'), version))
 console.log(`index.html og:image ?v=${version}`)
