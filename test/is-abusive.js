@@ -87,6 +87,29 @@ test('a missing or malformed IP skips the rule and stores nothing', async t => {
   t.deepEqual(errors, [])
 })
 
+test('a missing or malformed IP is never read from the store', async t => {
+  const store = memoryStore()
+  const peeked = []
+  store.peek = async key => {
+    peeked.push(key)
+    return 'someone else'
+  }
+  const { isAbusive, errors } = abusive({ store })
+  for (const ip of [undefined, null, '', 'not-an-ip', '999.1.1.1']) {
+    t.false(await isAbusive({ email: 'a@acme.com', ip }))
+  }
+  t.deepEqual(peeked, [])
+  t.deepEqual(errors, [])
+})
+
+test('a peek that resolves undefined is a free IP', async t => {
+  const store = memoryStore()
+  store.peek = async () => undefined
+  const { isAbusive, errors } = abusive({ store })
+  t.false(await isAbusive({ email: 'a@acme.com', ip: IP }))
+  t.deepEqual(errors, [])
+})
+
 test('an unverified address never takes an IP', async t => {
   const { isAbusive, store } = abusive()
   for (const verified of [undefined, false, 'true', 1]) {
@@ -188,6 +211,7 @@ test('takeIp never rejects, and reports a failure', async t => {
   })
   t.is(await failing.takeIp({ email: 'a@acme.com', ip: IP }), undefined)
   t.is(await failing.takeIp(undefined), undefined)
+  t.is(await failing.takeIp(null), undefined)
   t.is(
     await failing.takeIp({
       get email () {
@@ -197,6 +221,24 @@ test('takeIp never rejects, and reports a failure', async t => {
     undefined
   )
   t.deepEqual(failing.errors, ['redis down', 'boom'])
+})
+
+test('a failed takeIp tells onError which address it was', async t => {
+  const seen = []
+  const failure = new Error('redis down')
+  const { takeIp } = createAbusive({
+    ip: {
+      store: {
+        claim: async () => {
+          throw failure
+        }
+      }
+    },
+    secret: 'secret',
+    onError: details => seen.push(details)
+  })
+  await takeIp({ email: 'jane@acme.com', ip: IP })
+  t.deepEqual(seen, [{ email: 'jane@acme.com', error: failure }])
 })
 
 test('takeIp without an IP rule does nothing, and that is no error', async t => {
@@ -414,8 +456,8 @@ test('an address over 320 characters is not abusive and takes no IP', async t =>
 })
 
 test('an address with two @ or whitespace cannot take an IP or be judged by it', async t => {
-  const { signup, store } = abusive()
-  for (const email of [
+  const { isAbusive, signup, store, errors } = abusive()
+  const malformed = [
     'a@@acme.com',
     'a@b@acme.com',
     'a@ acme.com',
@@ -425,13 +467,18 @@ test('an address with two @ or whitespace cannot take an IP or be judged by it',
     'a@acme.com,b@acme.com',
     'a@acme.com, b@acme.com',
     'Jane <jane@acme.com>'
-  ]) {
+  ]
+  for (const email of malformed) {
     t.false(await signup(email), email)
   }
   t.is(store.values.size, 0)
   await signup('jane@acme.com')
-  t.false(await signup('a@@acme.com'))
+  for (const email of malformed) {
+    t.false(await signup(email), email)
+    t.false(await isAbusive({ email, ip: IP }), email)
+  }
   t.is(store.values.size, 1)
+  t.deepEqual(errors, [])
 })
 
 test('an unusual well-formed address still takes an IP', async t => {

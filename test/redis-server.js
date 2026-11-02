@@ -60,6 +60,23 @@ test('the same address keeps its IP, and another address is refused', async t =>
   t.true(await signup('john@acme.com', '203.0.113.1'))
 })
 
+test('an unverified check reads Redis and never writes to it', async t => {
+  const ownPrefix = `${prefix}peek:`
+  const errors = []
+  const { isAbusive } = createAbusive({
+    ip: { store: redisStore(client, { prefix: ownPrefix }) },
+    secret: 'secret',
+    onError: ({ error }) => errors.push(error.message)
+  })
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: '203.0.113.6' }))
+  t.deepEqual(await keysOf(ownPrefix), [])
+  await isAbusive({ email: 'jane@acme.com', ip: '203.0.113.6', verified: true })
+  t.false(await isAbusive({ email: 'jane@acme.com', ip: '203.0.113.6' }))
+  t.true(await isAbusive({ email: 'john@acme.com', ip: '203.0.113.6' }))
+  t.is((await keysOf(ownPrefix)).length, 1)
+  t.deepEqual(errors, [])
+})
+
 test('Redis holds nothing in the clear', async t => {
   const ownPrefix = `${prefix}clear:`
   const { signup } = signupsOn({ prefix: ownPrefix })

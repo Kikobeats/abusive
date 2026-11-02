@@ -43,8 +43,10 @@ const redisStore = (
     assertMilliseconds('ttlMs', ttlMs, Number.MAX_SAFE_INTEGER)
   }
   const expiry = ttlMs === undefined ? [] : ['PX', ttlMs]
+  const connected = async () =>
+    typeof client === 'function' ? client() : client
   const claim = async (key, value) => {
-    const redis = typeof client === 'function' ? await client() : client
+    const redis = await connected()
     const stored = `${prefix}${key}`
     for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
       if ((await redis.set(stored, value, ...expiry, 'NX')) === 'OK') {
@@ -55,10 +57,7 @@ const redisStore = (
     }
     throw new Error(`could not claim \`${key}\``)
   }
-  const peek = async key => {
-    const redis = typeof client === 'function' ? await client() : client
-    return redis.get(`${prefix}${key}`)
-  }
+  const peek = async key => (await connected()).get(`${prefix}${key}`)
   return {
     claim: (key, value) => withinTimeout(timeoutMs, () => claim(key, value)),
     peek: key => withinTimeout(timeoutMs, () => peek(key))
