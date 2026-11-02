@@ -13,7 +13,7 @@ export const BANNER = {
   tagline: { text: 'Catch the same person signing up twice.', size: 40 },
   command: {
     prompt: '$ ',
-    text: 'npm install abusive free-email-domains',
+    text: 'npm install abusive',
     size: 26
   },
   markToXHeight: 2.3,
