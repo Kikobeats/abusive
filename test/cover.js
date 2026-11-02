@@ -100,22 +100,54 @@ test('on a short phone the mark stays below the copy', async t => {
   }
 })
 
-test('the lens center lands under the pointer anywhere on the cover', async t => {
+const lensCenter = (mark, layout, angle, MARK) => {
+  const d = (MARK.center - MARK.size / 2) * layout.scale
+  return {
+    x: mark.x + Math.cos(angle) * d - Math.sin(angle) * d,
+    y: mark.y + Math.sin(angle) * d + Math.cos(angle) * d
+  }
+}
+
+test('inside its travel area the lens center lands under the pointer', async t => {
   const { layoutFor, lensUnder } = await scene
   const { MARK } = await brand
   const layout = layoutFor(1440, 900, DESKTOP_TEXT)
   const angle = 0.03
-  for (const pointer of [
-    { x: 40, y: 60 },
-    { x: 720, y: 450 },
-    { x: 1400, y: 880 }
-  ]) {
-    const mark = lensUnder(pointer, layout, angle)
-    const dx = (MARK.center - MARK.size / 2) * layout.scale
-    const lensX = mark.x + Math.cos(angle) * dx - Math.sin(angle) * dx
-    const lensY = mark.y + Math.sin(angle) * dx + Math.cos(angle) * dx
-    t.true(Math.abs(lensX - pointer.x) < 1e-9, `x ${lensX} vs ${pointer.x}`)
-    t.true(Math.abs(lensY - pointer.y) < 1e-9, `y ${lensY} vs ${pointer.y}`)
+  const pointer = { x: 1000, y: 450 }
+  const lens = lensCenter(
+    lensUnder(pointer, layout, angle),
+    layout,
+    angle,
+    MARK
+  )
+  t.true(Math.abs(lens.x - pointer.x) < 1e-9)
+  t.true(Math.abs(lens.y - pointer.y) < 1e-9)
+})
+
+test('the lens never enters the copy column or leaves the cover', async t => {
+  const { layoutFor, lensUnder } = await scene
+  const { MARK } = await brand
+  for (const [[width, height], text] of MEASURED_TEXT) {
+    const layout = layoutFor(width, height, text)
+    const ring = MARK.ring.outer * layout.scale
+    for (const pointer of [
+      { x: 0, y: 0 },
+      { x: 0, y: height },
+      { x: width, y: 0 },
+      { x: width, y: height },
+      { x: text.bodyRight / 2, y: height / 2 }
+    ]) {
+      const lens = lensCenter(lensUnder(pointer, layout, 0), layout, 0, MARK)
+      t.true(
+        lens.x - ring > text.bodyRight,
+        `${width}x${height} ${JSON.stringify(pointer)} enters the copy`
+      )
+      t.true(lens.x + ring <= width, `${width}x${height} right edge`)
+      t.true(
+        lens.y - ring >= 0 && lens.y + ring <= height,
+        `${width}x${height} vertical`
+      )
+    }
   }
 })
 

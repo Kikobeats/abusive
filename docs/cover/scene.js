@@ -24,6 +24,25 @@ const RING_SAMPLES = 48
 
 export const MARK_CENTER = [MARK.size / 2, MARK.size / 2]
 const LENS_OFFSET = [MARK.center - MARK_CENTER[0], MARK.center - MARK_CENTER[1]]
+const TRAVEL_MARGIN = 24
+
+const span = (low, high, fallback) =>
+  low <= high ? [low, high] : [fallback, fallback]
+
+function lensTravel ([left, top, right, bottom], scale, [homeX, homeY]) {
+  const ring = MARK.ring.outer * scale
+  const [minX, maxX] = span(
+    left + ring,
+    right - ring,
+    homeX + LENS_OFFSET[0] * scale
+  )
+  const [minY, maxY] = span(
+    top + ring,
+    bottom - ring,
+    homeY + LENS_OFFSET[1] * scale
+  )
+  return [minX, minY, maxX, maxY]
+}
 
 export const INTRO = Object.freeze({
   appear: 0.6,
@@ -111,6 +130,16 @@ function mobileLayout (width, height, textBox) {
     fontSize: 11,
     scrim: [0, top],
     home: [centerX, centerY],
+    travel: lensTravel(
+      [
+        MOBILE_GUTTER,
+        top + MOBILE_COPY_GAP,
+        width - MOBILE_GUTTER,
+        height - TRAVEL_MARGIN
+      ],
+      scale,
+      [centerX, centerY]
+    ),
     wander: [wanderX, 6],
     entry: [width * 0.18, 18],
     scale,
@@ -178,6 +207,16 @@ function desktopLayout (width, height, textBox) {
     fontSize: width > 1800 ? 14 : 13,
     scrim: [bodyRight, 0],
     home: [homeX, homeY],
+    travel: lensTravel(
+      [
+        bodyRight + DESKTOP_TEXT_GAP,
+        TRAVEL_MARGIN,
+        width - TRAVEL_MARGIN,
+        height - TRAVEL_MARGIN
+      ],
+      scale,
+      [homeX, homeY]
+    ),
     wander,
     entry: [Math.min(260, width - homeX), 34],
     scale,
@@ -223,9 +262,12 @@ export function lensUnder (pointer, layout, angle) {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
   const [x, y] = LENS_OFFSET
+  const [minX, minY, maxX, maxY] = layout.travel
+  const lensX = Math.min(maxX, Math.max(minX, pointer.x))
+  const lensY = Math.min(maxY, Math.max(minY, pointer.y))
   return {
-    x: pointer.x - (c * x - s * y) * layout.scale,
-    y: pointer.y - (s * x + c * y) * layout.scale
+    x: lensX - (c * x - s * y) * layout.scale,
+    y: lensY - (s * x + c * y) * layout.scale
   }
 }
 
