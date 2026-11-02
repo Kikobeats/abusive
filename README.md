@@ -4,9 +4,7 @@
 [![Coverage Status](https://img.shields.io/coveralls/Kikobeats/abusive.svg?style=flat-square)](https://coveralls.io/github/Kikobeats/abusive)
 [![NPM Status](https://img.shields.io/npm/dm/abusive.svg?style=flat-square)](https://www.npmjs.org/package/abusive)
 
-> Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers.
-
-**Catch the same person signing up twice.**
+> Catch the same person signing up twice.
 
 A free plan invites people to sign up again when the credits run out. They rarely invent a new identity. They take the address they already used and add a `+tag`, a dot or a number, or they sign up again from the same machine. **abusive** spots those signups and leaves real new users alone:
 

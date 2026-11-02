@@ -1,6 +1,6 @@
 {
   "name": "abusive",
-  "description": "Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers",
+  "description": "Catch the same person signing up twice",
   "homepage": "https://abusive.js.org",
   "version": "3.0.0",
   "types": "src/index.d.ts",
