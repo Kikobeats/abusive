@@ -349,3 +349,15 @@ test('signature headings and sidebar links are set in the code font', t => {
     )
   }
 })
+
+test('the copy status and the crawler copy are hidden with the one shared rule', t => {
+  t.regex(
+    read('_coverpage.md'),
+    /<span class="visually-hidden" role="status" data-copy-status>/
+  )
+  t.regex(read('index.html'), /<main id="seo-content" class="visually-hidden"/)
+  t.regex(
+    ruleBody(read('docs/css/style.css'), '.visually-hidden'),
+    /clip-path: inset\(50%\)/
+  )
+})
