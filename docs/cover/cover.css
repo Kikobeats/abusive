@@ -154,10 +154,10 @@
   font-family: var(--cover-font-mono);
   font-size: 15px;
   color: var(--cover-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
 }
+
+.cover__word { white-space: nowrap; }
 
 .cover__command code::before {
   content: "$ ";

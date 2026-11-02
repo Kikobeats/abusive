@@ -49,6 +49,7 @@ const createGpuHarness = ({ adapter, initError, initGate, onError = true }) => {
     passes: 0,
     loop: null,
     loops: 0,
+    disposals: 0,
     adapter
   }
   harness.init = async options => {
@@ -56,7 +57,10 @@ const createGpuHarness = ({ adapter, initError, initGate, onError = true }) => {
     if (initError !== undefined) throw initError
     await initGate
     const gpu = {
-      dispose: () => (harness.disposed = true),
+      dispose: () => {
+        harness.disposed = true
+        harness.disposals++
+      },
       lost: new Promise(resolve => {
         harness.loseDevice = reason => resolve({ reason })
       }),
@@ -397,6 +401,7 @@ test.serial(
     t.is(page.cover.dataset.mode, 'fallback')
     t.is(page.cover.dataset.reason, 'gpu-error: OOM')
     t.is(page.gpu.loop, null)
+    t.is(page.gpu.disposals, 1)
     page.close()
   }
 )
@@ -814,6 +819,10 @@ test.serial(
     t.is(page.cover.dataset.mode, 'fallback')
     t.is(page.cover.dataset.reason, 'reduced-motion')
     t.is(page.gpu.loop, null)
+    t.true(page.gpu.disposed)
+    t.deepEqual(page.observers.disconnected.sort(), ['intersection', 'resize'])
+    page.destroy()
+    t.is(page.gpu.disposals, 1)
     page.close()
   }
 )

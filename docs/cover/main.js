@@ -79,6 +79,7 @@ export function mountScene (cover) {
     cover.dataset.mode = 'fallback'
     cover.dataset.reason = reason
     stopRendering()
+    release()
   }
 
   function measureLayout () {
@@ -208,6 +209,7 @@ export function mountScene (cover) {
     )
     stopRendering = sync
     release = () => {
+      release = () => {}
       textResize.disconnect()
       visibility.disconnect()
       gpu.dispose()

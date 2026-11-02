@@ -444,7 +444,7 @@ test('every copy of the tagline, the install command and the title agree', async
   }
 
   const install = BANNER.command.text
-  t.is(cover.match(/<code data-command>(.*?)<\/code>/)[1], install)
+  t.is(textOf(cover.match(/<code data-command>(.*?)<\/code>/)[1]), install)
   t.is(metaContent(html, 'name', 'twitter:data1'), install)
 
   const title = html.match(/<title>(.*?)<\/title>/)[1]
@@ -465,4 +465,20 @@ test('cover.css sets --cover-bg on :root, which docsify reads before painting a 
     read('docs/cover/cover.css'),
     /^:root \{\n {2}--cover-bg: #[0-9a-f]{6};/
   )
+})
+
+const ruleWeight = (css, selector) =>
+  ruleBody(css, selector).match(/font-weight: (\d+);/)[1]
+
+test('the code font is loaded at every weight a signature is drawn with', t => {
+  const loaded = read('index.html')
+    .match(/family=JetBrains\+Mono:wght@([\d;]+)/)[1]
+    .split(';')
+  const css = read('docs/css/style.css')
+  for (const selector of [
+    '.markdown-section .signature',
+    '.sidebar-nav li.active > a'
+  ]) {
+    t.true(loaded.includes(ruleWeight(css, selector)), selector)
+  }
 })

@@ -579,3 +579,33 @@ test('the pause button shows only while the scene is live', t => {
     /\.cover-hero\[data-mode="live"\] \.cover__pause \{ display: grid; \}/
   )
 })
+
+test('the install command wraps instead of hiding the package name', t => {
+  const rule = read('docs/cover/cover.css').match(
+    /\.cover__command code \{([^}]*)\}/
+  )[1]
+  t.notRegex(rule, /text-overflow|white-space: nowrap|overflow: hidden/)
+})
+
+test('keyboard focus reaches the scroll cue before the pause button', t => {
+  const cover = read('_coverpage.md')
+  t.true(
+    cover.indexOf('class="cover__scroll"') <
+      cover.indexOf('class="cover__pause"')
+  )
+})
+
+test('the install command breaks only between words', t => {
+  const command = read('_coverpage.md').match(
+    /<code data-command>(.*?)<\/code>/
+  )[1]
+  for (const word of command.replace(/<[^>]+>/g, '').split(' ')) {
+    if (word.includes('-')) {
+      t.true(command.includes(`<span class="cover__word">${word}</span>`), word)
+    }
+  }
+  t.regex(
+    read('docs/cover/cover.css'),
+    /\.cover__word \{ white-space: nowrap; \}/
+  )
+})
