@@ -37,7 +37,8 @@ const READABLE_PAIRS = [
   ['--primary-color', '--surface-color'],
   ['--muted-color', '--bg-color'],
   ['--muted-color', '--surface-color'],
-  ['--accent-color', '--bg-color']
+  ['--accent-color', '--bg-color'],
+  ['--token-comment', '--surface-color']
 ]
 
 const readCss = file => readFileSync(join(ROOT, file), 'utf8')
@@ -61,7 +62,11 @@ const coverSheet = readCss('docs/cover/cover.css')
 const THEMES = {
   light: {
     style: tokensIn(stylesheet, ':root'),
-    cover: tokensIn(coverSheet, ':root[data-theme="light"]')
+    cover: tokensIn(
+      coverSheet,
+      ':root',
+      coverSheet.indexOf('@media (prefers-color-scheme: light)')
+    )
   },
   dark: {
     style: tokensIn(
@@ -122,15 +127,6 @@ for (const [theme, { style, cover }] of Object.entries(THEMES)) {
   }
 }
 
-test('the cover light theme is the same from the OS setting and from data-theme', t => {
-  const fromSystem = tokensIn(
-    coverSheet,
-    ':root:not([data-theme="dark"])',
-    coverSheet.indexOf('@media (prefers-color-scheme: light)')
-  )
-  t.deepEqual(fromSystem, THEMES.light.cover)
-})
-
 test('no colour in the cover shader leans green', t => {
   const shader = readFileSync(
     join(__dirname, '../docs/cover/shaders/lens.wgsl'),
@@ -155,18 +151,23 @@ const ruleBody = (css, selector) => {
   return css.slice(start, css.indexOf('}', start))
 }
 
-test('the search placeholder is readable, because it is the only label', t => {
-  const token = ruleBody(
-    stylesheet,
-    '.sidebar .search input::placeholder'
-  ).match(/color: var\((--[\w-]+)\)/)[1]
-  t.true(
-    READABLE_PAIRS.some(
-      ([text, background]) => text === token && background === '--surface-color'
-    ),
-    `${token} is not held to AA on the search field`
-  )
-})
+for (const selector of [
+  '.sidebar .search input::placeholder',
+  '.sidebar .search kbd'
+]) {
+  test(`${selector} text is held to AA on the search field`, t => {
+    const token = ruleBody(stylesheet, selector).match(
+      /color: var\((--[\w-]+)\)/
+    )[1]
+    t.true(
+      READABLE_PAIRS.some(
+        ([text, background]) =>
+          text === token && background === '--surface-color'
+      ),
+      `${token} is not held to AA on the search field`
+    )
+  })
+}
 
 test('the GitHub corner does not wave under reduced motion', t => {
   const reducedMotion = stylesheet.slice(
@@ -177,3 +178,18 @@ test('the GitHub corner does not wave under reduced motion', t => {
     /animation: none/
   )
 })
+
+const BANNER_TOKENS = {
+  background: '--bg-color',
+  text: '--primary-color',
+  accent: '--accent-color',
+  chip: '--surface-color',
+  chipBorder: '--border-color'
+}
+
+for (const [field, token] of Object.entries(BANNER_TOKENS)) {
+  test(`the social card ${field} is the dark ${token}`, async t => {
+    const { BANNER } = await import('../docs/brand/banner.js')
+    t.is(BANNER[field].toLowerCase(), THEMES.dark.style[token].toLowerCase())
+  })
+}

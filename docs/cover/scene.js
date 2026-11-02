@@ -3,6 +3,7 @@ import { ATLAS } from './atlas-layout.js'
 import { MARK, toHandleFrame } from '../brand/mark.js'
 
 const MOBILE_BREAKPOINT = 760
+export const MOBILE_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`
 const DESKTOP_RIGHT_MARGIN = 56
 const DESKTOP_TEXT_GAP = 30
 const DESKTOP_WORDMARK_GAP = 24
@@ -17,6 +18,7 @@ const MOBILE_ANGLE = 0
 const ANGLE_SWAY = 0.035
 const MOBILE_GUTTER = 16
 const MOBILE_SCALE_MAX = 7
+const MOBILE_SCALE_MIN = 3
 const MOBILE_BOTTOM_MARGIN = 24
 const MOBILE_COPY_GAP = 24
 const MOBILE_FONT_SIZE = 11
@@ -138,13 +140,17 @@ export function swayBounds (angle) {
 function mobileLayout (width, height, textBox) {
   const top = textBox.bottom
   const units = swayBounds(MOBILE_ANGLE)
+  const floor = height - MOBILE_BOTTOM_MARGIN
+  const widthScale = (width - 2 * MOBILE_GUTTER) / (units.right - units.left)
+  const heightScale =
+    (floor - top - MOBILE_COPY_GAP) / (units.bottom - units.top)
   const scale = Math.min(
-    (width - 2 * MOBILE_GUTTER) / (units.right - units.left),
-    MOBILE_SCALE_MAX
+    widthScale,
+    MOBILE_SCALE_MAX,
+    Math.max(MOBILE_SCALE_MIN, heightScale)
   )
   const markWidth = (units.right - units.left) * scale
   const markHeight = (units.bottom - units.top) * scale
-  const floor = height - MOBILE_BOTTOM_MARGIN
   const boxTop =
     top + Math.max(MOBILE_COPY_GAP, (floor - top - markHeight) * 0.5)
   const centerY = boxTop - units.top * scale
@@ -239,8 +245,13 @@ function desktopLayout (width, height, textBox) {
   }
 }
 
-export function layoutFor (width, height, textBox) {
-  return width < MOBILE_BREAKPOINT
+export function layoutFor (
+  width,
+  height,
+  textBox,
+  mobile = width < MOBILE_BREAKPOINT
+) {
+  return mobile
     ? mobileLayout(width, height, textBox)
     : desktopLayout(width, height, textBox)
 }

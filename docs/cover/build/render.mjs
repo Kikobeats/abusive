@@ -14,6 +14,9 @@ for (let i = 0; i < atlasPixels.length; i++) atlasPixels[i] = atlasPng.data[i * 
 const TEXT_BOXES = JSON.parse(readFileSync(new URL('./text-boxes.json', import.meta.url), 'utf8'))
 const STILL_SECONDS = BEST_FRAME_SECONDS
 const SEQUENCE_SECONDS = [0.2, 0.6, 1.0, 1.4, 1.8, 2.2, 2.6, 3.0]
+const WEBP = { quality: 82, effort: 6 }
+const SHEET_TILE = [720, 450]
+const SHEET_COLUMNS = 2
 
 const FRAMES = [
   { name: 'fallback-dark', width: 1440, height: 900, dpr: 2, theme: 0, text: TEXT_BOXES.desktop },
@@ -49,7 +52,7 @@ async function renderStills (gpu, frames, out) {
   mkdirSync(`${out}/scratch`, { recursive: true })
   for (const spec of frames) {
     const frame = await renderFrame(gpu, spec)
-    await toImage(frame).webp({ quality: 82, effort: 6 }).toFile(`${out}/${spec.name}.webp`)
+    await toImage(frame).webp(WEBP).toFile(`${out}/${spec.name}.webp`)
     await toImage(frame).png().toFile(`${out}/scratch/${spec.name}.png`)
     console.log(`${spec.name} ${frame.width}x${frame.height}`)
   }
@@ -63,13 +66,13 @@ async function renderSequence (gpu, out) {
     const frame = await renderFrame(gpu, spec, seconds)
     const file = `${out}/reveal-${seconds.toFixed(1)}s.png`
     await toImage(frame).png().toFile(file)
-    strip.push(await toImage(frame).resize(720, 450).png().toBuffer())
+    strip.push(await toImage(frame).resize(...SHEET_TILE).png().toBuffer())
     console.log(file)
   }
-  const columns = 2
-  const rows = Math.ceil(strip.length / columns)
-  await sharp({ create: { width: 720 * columns, height: 450 * rows, channels: 3, background: '#000' } })
-    .composite(strip.map((input, i) => ({ input, left: (i % columns) * 720, top: Math.floor(i / columns) * 450 })))
+  const [tileWidth, tileHeight] = SHEET_TILE
+  const rows = Math.ceil(strip.length / SHEET_COLUMNS)
+  await sharp({ create: { width: tileWidth * SHEET_COLUMNS, height: tileHeight * rows, channels: 3, background: '#000' } })
+    .composite(strip.map((input, i) => ({ input, left: (i % SHEET_COLUMNS) * tileWidth, top: Math.floor(i / SHEET_COLUMNS) * tileHeight })))
     .png()
     .toFile(`${out}/reveal-sequence.png`)
 }

@@ -8,6 +8,7 @@ const { default: test } = require('ava')
 const scene = import('../docs/cover/scene.js')
 const content = import('../docs/cover/content.js')
 const brand = import('../docs/brand/mark.js')
+const atlasLayout = import('../docs/cover/atlas-layout.js')
 
 const ROOT = join(__dirname, '..')
 const read = file => readFileSync(join(ROOT, file), 'utf8')
@@ -219,6 +220,47 @@ test('on a short phone the mark stays below the copy', async t => {
   }
 })
 
+const PHONE_COPY = {
+  right: 375,
+  top: 0,
+  bottom: 366,
+  bodyRight: 360,
+  wordmarkBottom: 107
+}
+
+test('on a short phone the whole mark fits under the copy', async t => {
+  const { layoutFor, swayBounds } = await scene
+  for (const [width, height] of [
+    [375, 667],
+    [700, 700],
+    [740, 600]
+  ]) {
+    const layout = layoutFor(width, height, PHONE_COPY)
+    const units = swayBounds(layout.angle)
+    const markBottom = layout.home[1] + units.bottom * layout.scale
+    t.true(markBottom <= height, `${width}x${height} mark bottom ${markBottom}`)
+    t.true(layout.scale > 3)
+  }
+})
+
+test('the mobile mark stops shrinking at scale 3', async t => {
+  const { layoutFor } = await scene
+  t.is(layoutFor(320, 568, PHONE_COPY).scale, 3)
+  t.is(layoutFor(320, 400, PHONE_COPY).scale, 3)
+})
+
+test('the layout takes the mobile mode it is given over the width', async t => {
+  const { layoutFor } = await scene
+  t.true(layoutFor(770, 900, DESKTOP_TEXT, true).mobile)
+  t.false(layoutFor(700, 900, DESKTOP_TEXT, false).mobile)
+})
+
+test('the scene and cover.css switch to mobile on the same media query', async t => {
+  const { MOBILE_QUERY } = await scene
+  t.is(MOBILE_QUERY, '(max-width: 759px)')
+  t.true(read('docs/cover/cover.css').includes(`@media ${MOBILE_QUERY} {`))
+})
+
 const lensCenter = (mark, layout, angle, MARK) => {
   const d = (MARK.center - MARK.size / 2) * layout.scale
   return {
@@ -271,7 +313,7 @@ test('the lens never enters the copy column or leaves the cover', async t => {
 })
 
 test('encoded rows carry each inbox line split at the local part', async t => {
-  const { encodeLines, INBOX_LINES } = await content
+  const { encodeLines, INBOX_LINES, LINE_ENCODING } = await content
   const encoded = encodeLines()
   t.is(encoded.height, INBOX_LINES.length)
   INBOX_LINES.forEach(([local, domain], index) => {
@@ -281,8 +323,8 @@ test('encoded rows carry each inbox line split at the local part', async t => {
       String.fromCharCode(...encoded.data.subarray(at, at + text.length)),
       text
     )
-    t.is(encoded.data[at + 36], local.length)
-    t.is(encoded.data[at + 37], text.length)
+    t.is(encoded.data[at + LINE_ENCODING.keyEndTexel], local.length)
+    t.is(encoded.data[at + LINE_ENCODING.lineLengthTexel], text.length)
   })
 })
 
@@ -320,9 +362,37 @@ test('the shader draws the frozen mark', async t => {
 })
 
 test('the shader wall matches the encoded rows', async t => {
-  const { INBOX_LINES } = await content
+  const { INBOX_LINES, LINE_ENCODING } = await content
   const wgsl = read('docs/cover/shaders/lens.wgsl')
   t.is(wgslConstant(wgsl, 'FIELD_COUNT'), INBOX_LINES.length)
+  t.is(wgslConstant(wgsl, 'TEXT_CELLS'), LINE_ENCODING.textCells)
+  t.is(wgslConstant(wgsl, 'KEY_END_TEXEL'), LINE_ENCODING.keyEndTexel)
+  t.is(wgslConstant(wgsl, 'LINE_LENGTH_TEXEL'), LINE_ENCODING.lineLengthTexel)
+  t.is(wgslConstant(wgsl, 'PLUS'), '+'.charCodeAt(0))
+})
+
+const wgslVector = (wgsl, name) =>
+  wgsl
+    .match(new RegExp(`const ${name} = vec2f\\(([\\d.]+), ([\\d.]+)\\);`))
+    .slice(1, 3)
+    .map(Number)
+
+test('the shader reads the atlas with the layout the atlas was drawn with', async t => {
+  const { ATLAS } = await atlasLayout
+  const wgsl = read('docs/cover/shaders/lens.wgsl')
+  t.deepEqual(wgslVector(wgsl, 'ATLAS_SIZE'), [
+    ATLAS.columns * ATLAS.cellWidth,
+    ATLAS.rows * ATLAS.cellHeight
+  ])
+  t.deepEqual(wgslVector(wgsl, 'ATLAS_CELL'), [
+    ATLAS.cellWidth,
+    ATLAS.cellHeight
+  ])
+  t.is(wgslConstant(wgsl, 'ATLAS_COLUMNS'), ATLAS.columns)
+  t.is(wgslConstant(wgsl, 'ATLAS_TEXELS_PER_EM'), ATLAS.texelsPerEm)
+  t.is(wgslConstant(wgsl, 'ATLAS_PAD'), ATLAS.pad)
+  t.is(wgslConstant(wgsl, 'ATLAS_ASCENT_EM'), ATLAS.ascentEm)
+  t.is(wgslConstant(wgsl, 'ATLAS_SPREAD'), ATLAS.spread)
 })
 
 test('the lens magnifies what is under it', t => {

@@ -4,14 +4,14 @@ The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh)
 
 ## How it loads
 
-- `_coverpage.md` holds the markup. docsify renders it, and `docs/js/main.js` imports `main.js` once the markup is in the page.
+- `_coverpage.md` holds the markup. docsify renders it, and `docs/js/main.js` imports `main.js` once the markup is in the page. `docs/js/main.js` also decides whether the cover can render live, and only then preloads vgpu.
 - `main.js` imports `vgpu@0.6.0` from jsdelivr, so nothing is bundled. It renders one fullscreen effect (`shaders/lens.wgsl`, prepared into `shaders.js`) with the glyph atlas (`atlas.png`, laid out by `atlas-layout.js`).
-- `scene.js` lays the mark out from `docs/brand/mark.js`, so the glass is the committed logo. `test/cover.js` checks that the shader's copy of the geometry is the same numbers.
+- `scene.js` lays the mark out from `docs/brand/mark.js`, so the glass is the committed logo. `test/cover.js` checks that the shader's copies of the mark geometry, the atlas layout and the line encoding are the same numbers.
 - `content.js` holds the inbox lines on the wall.
 - Rendering pauses when the cover is off screen or the tab is hidden, and the DPR is capped at 2.
-- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
-- The theme follows `prefers-color-scheme` and `data-theme`, and switches live.
-- Below the tagline, the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent.
+- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`, and `data-reason` on the cover says why. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
+- The theme follows `prefers-color-scheme` and switches live. The layout switches to mobile with the same `max-width: 759px` query as `cover.css`.
+- Below the tagline, the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent. Both announce the result through a status region.
 
 ## Rebuild
 

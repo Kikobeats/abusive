@@ -1,5 +1,4 @@
 :root {
-  --_mobile-breakpoint: 768px;
   --sidebar-width: 280px;
   --content-width: 760px;
 
@@ -15,13 +14,13 @@
   --token-keyword: var(--muted-color);
   --token-name: var(--primary-color);
   --token-value: var(--accent-color);
-  --token-comment: #6d7686;
+  --token-comment: #646d7d;
   --token-punctuation: var(--muted-color);
   --corner-color: var(--accent-color);
   --mark-glow: none;
   --plugin-search-kbd-bg: var(--bg-color);
   --plugin-search-kbd-border: 1px solid var(--border-color);
-  --plugin-search-kbd-color: var(--subtle-color);
+  --plugin-search-kbd-color: var(--muted-color);
   --plugin-search-reset-bg: var(--muted-color);
   --plugin-search-reset-color: var(--bg-color);
   --plugin-search-reset-border-radius: 50%;
@@ -236,10 +235,6 @@ main {
   padding: 0;
 }
 
-.sidebar-nav li:has(> a[href$='?id=contents']) {
-  display: none;
-}
-
 .sidebar-nav ul ul {
   border-left: 1px solid var(--border-color);
   margin: 2px 0 8px 12px;
@@ -444,46 +439,6 @@ main > .content {
   letter-spacing: normal;
   margin: 16px 0 0;
   padding: 0;
-}
-
-.markdown-section details {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  margin: 10px 0;
-  padding: 0 18px;
-}
-
-.markdown-section details[open] {
-  padding-bottom: 6px;
-}
-
-.markdown-section summary {
-  align-items: center;
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  list-style: none;
-  padding: 13px 0;
-}
-
-.markdown-section summary::-webkit-details-marker {
-  display: none;
-}
-
-.markdown-section summary::before {
-  color: var(--subtle-color);
-  content: '›';
-  font-size: 1.2em;
-  line-height: 1;
-  transition: transform 0.15s ease-out;
-}
-
-.markdown-section details[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.markdown-section summary:hover strong {
-  color: var(--accent-color);
 }
 
 .markdown-section hr {
@@ -832,7 +787,7 @@ body:not(.sticky) .sidebar {
 .sidebar .search kbd {
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  color: var(--subtle-color);
+  color: var(--muted-color);
   font-family: var(--code-font);
   font-size: 11px;
   line-height: 1;

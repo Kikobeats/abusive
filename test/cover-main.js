@@ -91,19 +91,22 @@ const openCover = async ({
   adapter = { features: new Set() },
   initError,
   onError,
-  reducedMotion = false,
+  fallback,
+  mobile = false,
   prefersLight = false,
-  theme,
   fonts,
   clipboard = () => Promise.resolve()
 } = {}) => {
   const window = new Window({ url })
   const { document } = window
-  if (theme) document.documentElement.dataset.theme = theme
   document.body.innerHTML = COVER_MARKUP
   if (fonts) document.fonts = { ready: fonts }
 
   const cover = document.querySelector('[data-cover]')
+  if (fallback) {
+    cover.dataset.mode = 'fallback'
+    cover.dataset.reason = fallback
+  }
   const textBlock = cover.querySelector('[data-cover-text]')
   const measured = { cover: 0 }
   cover.getBoundingClientRect = () => {
@@ -125,7 +128,7 @@ const openCover = async ({
   const media = { light: prefersLight, listeners: [] }
   window.matchMedia = query => ({
     get matches () {
-      if (query === '(prefers-reduced-motion: reduce)') return reducedMotion
+      if (query === '(max-width: 759px)') return mobile
       return query === '(prefers-color-scheme: light)' && media.light
     },
     addEventListener: (type, listener) => {
@@ -230,7 +233,9 @@ const openCover = async ({
 }
 
 const settle = async () => {
-  for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)) }
+  for (let i = 0; i < 5; i++) {
+    await new Promise(resolve => setImmediate(resolve))
+  }
 }
 
 const fallbackReason = async options => {
@@ -240,24 +245,45 @@ const fallbackReason = async options => {
   return { mode, reason }
 }
 
-test.serial('each early fallback keeps its own reason', async t => {
-  t.deepEqual(await fallbackReason({ url: `${SITE}?fallback` }), {
-    mode: 'fallback',
-    reason: 'forced'
-  })
-  t.deepEqual(await fallbackReason({ reducedMotion: true }), {
-    mode: 'fallback',
-    reason: 'reduced-motion'
-  })
-  t.deepEqual(await fallbackReason({ gpu: false }), {
-    mode: 'fallback',
-    reason: 'no-webgpu'
-  })
+test.serial(
+  'a cover the docs already sent to the still frame never starts the GPU',
+  async t => {
+    t.deepEqual(await fallbackReason({ fallback: 'reduced-motion' }), {
+      mode: 'fallback',
+      reason: 'reduced-motion'
+    })
+    const page = await openCover({ fallback: 'forced' })
+    t.is(page.gpu.initOptions, 'not called')
+    t.is(page.gpu.loop, null)
+    page.close()
+  }
+)
+
+test.serial('a GPU without an adapter keeps the still frame', async t => {
   t.deepEqual(await fallbackReason({ adapter: null }), {
     mode: 'fallback',
     reason: 'no-adapter'
   })
 })
+
+test.serial('the copy buttons work on the still frame too', async t => {
+  const page = await openCover({ fallback: 'no-webgpu' })
+  await click(page, '[data-copy]')
+  t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
+  page.close()
+})
+
+test.serial(
+  'the layout is mobile exactly when the mobile media query matches',
+  async t => {
+    const wide = await openCover({ mobile: true })
+    t.is(wide.lastParams().fontSize, 11)
+    wide.close()
+    const desktop = await openCover()
+    t.is(desktop.lastParams().fontSize, 13)
+    desktop.close()
+  }
+)
 
 test.serial(
   'a failed start reports the error code, else its message, else the value',
@@ -455,28 +481,15 @@ const initialTheme = async options => {
   return theme
 }
 
-test.serial(
-  'the theme follows data-theme first and the OS setting otherwise, live',
-  async t => {
-    t.is(await initialTheme({ theme: 'light' }), 1)
-    t.is(await initialTheme({ theme: 'dark', prefersLight: true }), 0)
-    t.is(await initialTheme({ prefersLight: true }), 1)
-    t.is(await initialTheme(), 0)
+test.serial('the theme follows the OS setting, live', async t => {
+  t.is(await initialTheme({ prefersLight: true }), 1)
+  t.is(await initialTheme(), 0)
 
-    const os = await openCover()
-    t.is(await themeAfter(os, page => page.setPrefersLight(true)), 1)
-    os.close()
-
-    const attribute = await openCover({ prefersLight: true })
-    t.is(
-      await themeAfter(attribute, page => {
-        page.document.documentElement.dataset.theme = 'dark'
-      }),
-      0
-    )
-    attribute.close()
-  }
-)
+  const page = await openCover()
+  t.is(await themeAfter(page, cover => cover.setPrefersLight(true)), 1)
+  t.is(await themeAfter(page, cover => cover.setPrefersLight(false)), 0)
+  page.close()
+})
 
 test.serial(
   'the layout is measured again only after something resizes',
@@ -546,15 +559,19 @@ const click = async (page, selector) => {
 test.serial('copying the command marks the button until the reset', async t => {
   const page = await openCover()
   const button = page.cover.querySelector('[data-copy]')
+  const status = page.cover.querySelector('[role="status"]')
+  t.is(status.textContent, '')
   await click(page, '[data-copy]')
   t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
   t.is(button.dataset.copied, 'true')
+  t.is(status.textContent, 'Copied to clipboard')
   t.deepEqual(
     [...page.timers.values()].map(({ ms }) => ms),
     [COPIED_MS]
   )
   page.runTimers()
   t.false('copied' in button.dataset)
+  t.is(status.textContent, '')
   page.close()
 })
 
@@ -589,6 +606,10 @@ test.serial('a refused copy leaves the buttons as they were', async t => {
   await click(page, '[data-copy-prompt]')
   t.is(label.textContent, 'Copy prompt')
   t.false('copied' in button.dataset)
+  t.is(
+    page.cover.querySelector('[role="status"]').textContent,
+    'Could not copy'
+  )
   await click(page, '[data-copy]')
   t.false('copied' in page.cover.querySelector('[data-copy]').dataset)
   t.is(page.timers.size, 1)

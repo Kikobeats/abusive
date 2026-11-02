@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url'
 import opentype from 'opentype.js'
 import sharp from 'sharp'
 import { BANNER, bannerSvg, dither, versionBannerUrls } from './banner.js'
-import { iconSvg, markSvg } from './mark.js'
+import { ICON, iconSvg, markSvg } from './mark.js'
 
 const require = createRequire(import.meta.url)
 const STATIC = new URL('../../static/', import.meta.url)
 const INDEX = new URL('../../index.html', import.meta.url)
 const ICON_SIZES = { 'logo.png': 512, 'favicon-32x32.png': 32 }
+const CSS_DPI = 72
+const BANNER_JPEG = { quality: 95, chromaSubsampling: '4:4:4' }
 
 const font = (pkg, file) => {
   const { buffer, byteOffset, byteLength } = readFileSync(require.resolve(`@fontsource/${pkg}/files/${file}`))
@@ -52,18 +54,18 @@ write('mark.svg', markSvg())
 write('logo.svg', icon)
 
 for (const [name, size] of Object.entries(ICON_SIZES)) {
-  await sharp(Buffer.from(icon), { density: (72 * size) / 64 }).resize(size, size).png().toFile(fileURLToPath(new URL(name, STATIC)))
+  await sharp(Buffer.from(icon), { density: (CSS_DPI * size) / ICON.size }).resize(size, size).png().toFile(fileURLToPath(new URL(name, STATIC)))
   console.log(`static/${name}`)
 }
 
 const banner = bannerSvg({ fonts: FONTS, textPath })
-const { data, info } = await sharp(Buffer.from(banner), { density: 72 * BANNER.scale })
+const { data, info } = await sharp(Buffer.from(banner), { density: CSS_DPI * BANNER.scale })
   .resize(BANNER.width * BANNER.scale, BANNER.height * BANNER.scale)
   .flatten({ background: BANNER.background })
   .raw()
   .toBuffer({ resolveWithObject: true })
 await sharp(dither(data), { raw: info })
-  .jpeg({ quality: 95, chromaSubsampling: '4:4:4' })
+  .jpeg(BANNER_JPEG)
   .toFile(fileURLToPath(new URL('banner.jpg', STATIC)))
 console.log('static/banner.jpg')
 

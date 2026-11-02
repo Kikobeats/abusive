@@ -15,7 +15,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root {
     --cover-bg: #f8fafd;
     --cover-text: #10141c;
     --cover-muted: #535c6b;
@@ -27,19 +27,6 @@
     --cover-corner: rgb(11 91 211 / 0.1);
     color-scheme: light;
   }
-}
-
-:root[data-theme="light"] {
-  --cover-bg: #f8fafd;
-  --cover-text: #10141c;
-  --cover-muted: #535c6b;
-  --cover-border: #dde3ec;
-  --cover-accent: #0b5bd3;
-  --cover-accent-ink: #ffffff;
-  --cover-glow: rgb(11 91 211 / 0.28);
-  --cover-shadow: rgb(16 20 28 / 0.16);
-  --cover-corner: rgb(11 91 211 / 0.1);
-  color-scheme: light;
 }
 
 .cover-hero {
@@ -150,6 +137,15 @@
   outline: 2px solid var(--cover-accent);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+.cover__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .cover__command {

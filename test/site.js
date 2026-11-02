@@ -154,19 +154,55 @@ test('the docs script imports the cover once', t => {
   page.window.close()
 })
 
-test('the still frame hides only while a live cover is expected', async t => {
-  for (const [options, expectLive] of [
-    [{}, true],
-    [{ gpu: false }, false],
-    [{ reducedMotion: true }, false],
-    [{ url: `${SITE}?fallback` }, false]
+const RENDERER = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
+
+const coverStart = options => {
+  const page = docsPage({ body: COVER, ...options })
+  page.ready()
+  const { mode, reason, expectLive } =
+    page.document.querySelector('[data-cover]').dataset
+  const preloads = [
+    ...page.document.querySelectorAll('link[rel="modulepreload"]')
+  ].map(link => link.href)
+  const started = page.imports.length
+  page.window.close()
+  return { mode, reason, expectLive, preloads, started }
+}
+
+test('a cover that can render live hides the still frame and preloads vgpu', t => {
+  t.deepEqual(coverStart({}), {
+    mode: 'loading',
+    reason: undefined,
+    expectLive: '',
+    preloads: [RENDERER],
+    started: 1
+  })
+})
+
+test('each reason to keep the still frame is recorded and skips the vgpu preload', t => {
+  for (const [options, reason] of [
+    [{ url: `${SITE}?fallback` }, 'forced'],
+    [{ reducedMotion: true }, 'reduced-motion'],
+    [{ gpu: false }, 'no-webgpu']
   ]) {
-    const page = docsPage({ body: COVER, ...options })
-    page.ready()
-    const hero = page.document.querySelector('[data-cover]')
-    t.is('expectLive' in hero.dataset, expectLive, JSON.stringify(options))
-    page.window.close()
+    t.deepEqual(
+      coverStart(options),
+      {
+        mode: 'fallback',
+        reason,
+        expectLive: undefined,
+        preloads: [],
+        started: 1
+      },
+      reason
+    )
   }
+})
+
+test('the docs preload the vgpu build the cover imports', t => {
+  t.true(read('docs/cover/main.js').includes(`'${RENDERER}'`))
+  t.true(read('docs/js/main.js').includes(`'${RENDERER}'`))
+  t.false(read('index.html').includes(RENDERER))
 })
 
 test('a cover module that fails to load leaves the still frame', async t => {
@@ -265,9 +301,8 @@ test('the crawler copy leaves once the docs render', t => {
   })
   page.doneEach()
   t.is(page.document.querySelector('#seo-content'), null)
-  page.doneEach()
+  t.notThrows(() => page.doneEach())
   page.window.close()
-  t.pass()
 })
 
 test('search results drop the backticks from titles and snippets only', async t => {

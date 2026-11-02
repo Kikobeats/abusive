@@ -17,10 +17,18 @@ export const INBOX_LINES = Object.freeze([
   ['d.erek1', 'gmail.com']
 ])
 
-const TEXT_CELLS = 36
-const KEY_END_TEXEL = 36
-const LINE_LENGTH_TEXEL = 37
-const TEXEL_WIDTH = 40
+export const LINE_ENCODING = Object.freeze({
+  textCells: 36,
+  keyEndTexel: 36,
+  lineLengthTexel: 37,
+  texelWidth: 40
+})
+const {
+  textCells: TEXT_CELLS,
+  keyEndTexel: KEY_END_TEXEL,
+  lineLengthTexel: LINE_LENGTH_TEXEL,
+  texelWidth: TEXEL_WIDTH
+} = LINE_ENCODING
 const SPACE = 32
 const AT = '@'
 

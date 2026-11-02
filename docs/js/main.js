@@ -49,20 +49,43 @@ const watchSearchResults = () => {
 }
 
 const COVER_MODULE = 'docs/cover/main.js'
+const RENDERER_MODULE = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 
 let coverStarted = false
 
-const rendersLive = () =>
-  'gpu' in navigator &&
-  !window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
-  !new URLSearchParams(window.location.search).has('fallback')
+const fallbackReason = () => {
+  if (new URLSearchParams(window.location.search).has('fallback')) {
+    return 'forced'
+  }
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return 'reduced-motion'
+  }
+  if (!('gpu' in navigator)) return 'no-webgpu'
+  return null
+}
+
+const preloadRenderer = () => {
+  const link = document.createElement('link')
+  link.rel = 'modulepreload'
+  link.href = RENDERER_MODULE
+  link.crossOrigin = ''
+  document.head.append(link)
+}
+
+const coverFallback = fallbackReason()
+if (!coverFallback) preloadRenderer()
 
 const startCover = () => {
   if (coverStarted) return true
   const hero = document.querySelector('[data-cover]')
   if (!hero) return false
   coverStarted = true
-  if (rendersLive()) hero.dataset.expectLive = ''
+  if (coverFallback) {
+    hero.dataset.mode = 'fallback'
+    hero.dataset.reason = coverFallback
+  } else {
+    hero.dataset.expectLive = ''
+  }
   import(new URL(COVER_MODULE, document.baseURI).href).catch(() => {
     hero.dataset.mode = 'fallback'
   })

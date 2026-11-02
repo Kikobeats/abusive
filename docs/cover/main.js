@@ -1,6 +1,7 @@
 import { lensShader } from './shaders.js'
 import {
   BEST_FRAME_SECONDS,
+  MOBILE_QUERY,
   createLensEffect,
   layoutFor,
   sceneParams,
@@ -11,10 +12,13 @@ const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 const DPR_RANGE = [1, 2]
 const MAX_STEP_SECONDS = 0.05
 const COPIED_MS = 1400
+const COPIED_STATUS = 'Copied to clipboard'
+const COPY_FAILED_STATUS = 'Could not copy'
 
 const cover = document.querySelector('[data-cover]')
 const canvas = cover.querySelector('canvas')
 const textBlock = cover.querySelector('[data-cover-text]')
+const copyStatus = cover.querySelector('[data-copy-status]')
 const copyReset = new WeakMap()
 
 let stopRendering = () => {}
@@ -27,23 +31,10 @@ function showFallback (reason) {
   stopRendering()
 }
 
-function wantsFallback () {
-  if (new URLSearchParams(window.location.search).has('fallback')) {
-    return 'forced'
-  }
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    return 'reduced-motion'
-  }
-  if (!('gpu' in navigator)) return 'no-webgpu'
-  return null
-}
+const prefersLight = window.matchMedia('(prefers-color-scheme: light)')
+const mobileViewport = window.matchMedia(MOBILE_QUERY)
 
-function readTheme () {
-  const forced = document.documentElement.dataset.theme
-  if (forced === 'light') return 1
-  if (forced === 'dark') return 0
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 1 : 0
-}
+const readTheme = () => (prefersLight.matches ? 1 : 0)
 
 function contentRight (element) {
   const range = document.createRange()
@@ -53,7 +44,12 @@ function contentRight (element) {
 
 function measureLayout () {
   const rect = cover.getBoundingClientRect()
-  return layoutFor(rect.width, rect.height, textBoxFor(rect))
+  return layoutFor(
+    rect.width,
+    rect.height,
+    textBoxFor(rect),
+    mobileViewport.matches
+  )
 }
 
 function textBoxFor (rect) {
@@ -63,15 +59,13 @@ function textBoxFor (rect) {
   const right = Math.max(...boxes.map(box => box.right))
   const top = Math.min(...boxes.map(box => box.top))
   const bottom = Math.max(...boxes.map(box => box.bottom))
-  const [wordmark, ...body] = [...textBlock.children]
-  const bodyRight = body.length ? Math.max(...body.map(contentRight)) : right
+  const [wordmark, ...body] = textBlock.children
   return {
     right: right - rect.left,
     top: top - rect.top,
     bottom: bottom - rect.top,
-    bodyRight: bodyRight - rect.left,
-    wordmarkBottom:
-      (wordmark?.getBoundingClientRect().bottom ?? bottom) - rect.top
+    bodyRight: Math.max(...body.map(contentRight)) - rect.left,
+    wordmarkBottom: wordmark.getBoundingClientRect().bottom - rect.top
   }
 }
 
@@ -91,8 +85,7 @@ async function loadAtlas () {
 }
 
 async function start () {
-  const reason = wantsFallback()
-  if (reason) return showFallback(reason)
+  if (hasFailed()) return
 
   const [vgpu, atlasPixels] = await Promise.all([import(VGPU_URL), loadAtlas()])
   const adapter = await navigator.gpu.requestAdapter()
@@ -198,13 +191,8 @@ function bindInput (state) {
   cover.addEventListener('pointerleave', () => {
     state.pointer = null
   })
-  const updateTheme = () => (state.themeTarget = readTheme())
-  window
-    .matchMedia('(prefers-color-scheme: light)')
-    .addEventListener('change', updateTheme)
-  new window.MutationObserver(updateTheme).observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme']
+  prefersLight.addEventListener('change', () => {
+    state.themeTarget = readTheme()
   })
 }
 
@@ -260,10 +248,12 @@ function bindCopy (button, readText, label) {
   const idle = label?.textContent
   button.addEventListener('click', async () => {
     const copied = await copyText(button, readText())
+    copyStatus.textContent = copied ? COPIED_STATUS : COPY_FAILED_STATUS
     if (label) label.textContent = copied ? 'Copied' : idle
     if (!copied) return
     scheduleReset(button, () => {
       delete button.dataset.copied
+      copyStatus.textContent = ''
       if (label) label.textContent = idle
     })
   })
