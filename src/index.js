@@ -237,14 +237,14 @@ const createAbusive = ({
     }
   }
 
-  const reasonOf = async ({ email, parts, ip, verified }) => {
+  const reasonOf = async ({ email, parts, ip }) => {
     if (
       lookup != null &&
       (await reportingFailure(email, () => siblingOf(parts)))
     ) {
       return SIBLING
     }
-    if (verified !== true || ipRule === null) return null
+    if (ipRule === null) return null
     const address = `${parts.local}@${parts.domain}`
     if (!SINGLE_ADDRESS.test(address)) return null
     const isTaken = await reportingFailure(email, () =>
@@ -255,13 +255,13 @@ const createAbusive = ({
 
   const isAbusive = async check => {
     try {
-      const { email, ip, verified = false } = check ?? {}
+      const { email, ip } = check ?? {}
       if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
         return false
       }
       const parts = parseEmail(email)
       if (parts === null) return false
-      const reason = await reasonOf({ email, parts, ip, verified })
+      const reason = await reasonOf({ email, parts, ip })
       if (reason === null) return false
       notifyQuietly(onAbusive, { email, domain: parts.domain, reason })
       return true

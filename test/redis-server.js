@@ -26,7 +26,7 @@ const signupsOn = (options = {}) => {
   })
   return {
     errors,
-    signup: (email, ip) => isAbusive({ email, ip, verified: true })
+    signup: (email, ip) => isAbusive({ email, ip })
   }
 }
 
@@ -108,8 +108,7 @@ test('an unreachable Redis is a failed check once timeoutMs passes', async t => 
   t.false(
     await isAbusive({
       email: 'jane@acme.com',
-      ip: '203.0.113.5',
-      verified: true
+      ip: '203.0.113.5'
     })
   )
   t.deepEqual(errors, ['redis store timed out'])
