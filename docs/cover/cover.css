@@ -40,6 +40,7 @@
   align-items: center;
   color: var(--cover-text);
   font-family: var(--cover-font-body);
+  cursor: url("../../static/cursor.svg") 13 13, zoom-in;
 }
 
 .cover-hero::after {

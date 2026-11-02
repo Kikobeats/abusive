@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import opentype from 'opentype.js'
 import sharp from 'sharp'
 import { BANNER, bannerSvg, dither, versionBannerUrls } from './banner.js'
-import { ICON, iconSvg, markSvg } from './mark.js'
+import { ICON, cursorSvg, iconSvg, markSvg } from './mark.js'
 
 const require = createRequire(import.meta.url)
 const STATIC = new URL('../../static/', import.meta.url)
@@ -53,6 +53,7 @@ const write = (name, contents) => {
 const icon = iconSvg()
 write('mark.svg', markSvg())
 write('logo.svg', icon)
+write('cursor.svg', cursorSvg())
 
 for (const [name, size] of Object.entries(ICON_SIZES)) {
   await sharp(Buffer.from(icon), { density: (CSS_DPI * size) / ICON.size }).resize(size, size).png().toFile(fileURLToPath(new URL(name, STATIC)))

@@ -38,6 +38,17 @@ test('the committed mark and icon are what the brand build generates', async t =
   t.is(read('static/logo.svg', 'utf8'), iconSvg())
 })
 
+test('the cover cursor is the generated mark, clicking at the lens center', async t => {
+  const { cursorSvg, cursorHotspot } = await brand
+  t.is(read('static/cursor.svg', 'utf8'), cursorSvg())
+  const hotspot = cursorHotspot()
+  const rule = read('docs/cover/cover.css', 'utf8').match(
+    /\.cover-hero \{[^}]*cursor: url\("\.\.\/\.\.\/static\/cursor\.svg"\) (\d+) (\d+), zoom-in;/
+  )
+  t.truthy(rule, 'the cover sets the magnifier cursor')
+  t.deepEqual(rule.slice(1).map(Number), [hotspot, hotspot])
+})
+
 test('the dot floats inside the lens without touching the ring', async t => {
   const { MARK } = await brand
   t.true(MARK.dot > 0)

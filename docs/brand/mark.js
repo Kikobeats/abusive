@@ -23,6 +23,13 @@ export const ICON = {
   glowOpacity: 0.35
 }
 
+export const CURSOR = {
+  size: 32,
+  padding: 2,
+  outline: '#ffffff',
+  outlineWidth: 3
+}
+
 const PATH_DECIMALS = 3
 const SCALE_DECIMALS = 5
 
@@ -126,6 +133,24 @@ export const iconSvg = (icon = ICON) => {
       icon.glowOpacity
     }" filter="url(#glow)" transform="${transform}" d="${markPath()}"/>` +
     `<path fill="url(#m)" transform="${transform}" d="${markPath()}"/>` +
+    '</svg>\n'
+  )
+}
+
+const cursorViewBox = (cursor = CURSOR) => MARK.size + cursor.padding * 2
+
+export const cursorHotspot = (cursor = CURSOR) => {
+  const lensCenter = cursor.padding + MARK.center
+  return Math.round((lensCenter * cursor.size) / cursorViewBox(cursor))
+}
+
+export const cursorSvg = (cursor = CURSOR) => {
+  const { size, padding, outline, outlineWidth } = cursor
+  const viewBox = cursorViewBox(cursor)
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${viewBox} ${viewBox}">` +
+    `<defs>${markGradient('m')}</defs>` +
+    `<path fill="url(#m)" stroke="${outline}" stroke-width="${outlineWidth}" stroke-linejoin="round" paint-order="stroke" transform="translate(${padding} ${padding})" d="${markPath()}"/>` +
     '</svg>\n'
   )
 }
