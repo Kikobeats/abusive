@@ -6,12 +6,18 @@
 
 > Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers.
 
-```
-derek@gmail.com      registered
-d.erek+3@gmail.com   refused: same inbox
-derek2@gmail.com     refused: numbered variant
-jane@gmail.com       allowed: different person
-john1987@gmail.com   allowed: a year is not a counter
+**Catch the same person signing up twice.**
+
+A free plan invites people to sign up again when the credits run out. They rarely invent a new identity. They take the address they already used and add a `+tag`, a dot or a number, or they sign up again from the same machine. **abusive** spots those signups and leaves real new users alone:
+
+```js
+// derek@gmail.com signed up from 203.0.113.7
+
+await isAbusive({ email: 'd.erek+3@gmail.com', ip: '198.51.100.1' }) // => true, same inbox
+await isAbusive({ email: 'derek2@gmail.com', ip: '198.51.100.2' })   // => true, numbered variant
+await isAbusive({ email: 'jane@gmail.com', ip: '198.51.100.3' })     // => false, different person
+await isAbusive({ email: 'john1987@gmail.com', ip: '198.51.100.4' }) // => false, a year is not a counter
+await isAbusive({ email: 'mike@gmail.com', ip: '203.0.113.7' })      // => true, same IP as derek@
 ```
 
 - Refuses the next signup without banning the whole domain.
@@ -31,6 +37,98 @@ $ npm install abusive free-email-domains --save
 
 ## Quick start
 
+**abusive** has three rules. Each one is optional, and you turn it on by passing its options. Start with one and add the others when you need them. The examples use `await` at the top level, as in an ES module or the Node REPL.
+
+| Rule | Refuses | Needs |
+|---|---|---|
+| [Sibling](#check-against-the-users-you-have), another spelling of an address you have | `d.erek+3@gmail.com` when `derek@gmail.com` is a user | A `lookup` listing your users at a domain |
+| [IP](#one-account-per-ip) | A second address from the same IP | A `store`, such as Redis, and a `secret` |
+| [Free email](#refuse-free-email-providers) | `jane@gmail.com`, if you only want work addresses | A domain list |
+
+### Compare two addresses
+
+No setup at all. `isSibling` tells you whether two addresses look like the same person:
+
+```js
+const { isSibling } = require('abusive')
+
+isSibling('d.erek+3@gmail.com', 'derek1@gmail.com') // => true, same inbox plus a counter
+isSibling('jane@gmail.com', 'john@gmail.com')       // => false
+```
+
+### Check against the users you have
+
+To check a new signup, **abusive** needs to know who already signed up. Give it a `lookup`: a function that receives a `domain` and returns the addresses you have there.
+
+```js
+const users = ['derek@gmail.com', 'destek@acme.com']
+
+const { isAbusive } = require('abusive')({
+  sibling: {
+    lookup: ({ domain }) => users.filter(email => email.endsWith(`@${domain}`))
+  }
+})
+
+await isAbusive({ email: 'd.erek+3@gmail.com' }) // => true, same inbox as derek@
+await isAbusive({ email: 'destek6@acme.com' })   // => true, numbered variant of destek@
+await isAbusive({ email: 'jane@gmail.com' })     // => false
+```
+
+In a real app the `lookup` asks your database or Stripe. Both are ready to copy in [Lookups](#lookups).
+
+### One account per IP
+
+Many people come back from the same machine with a fresh address. Pass the signup `ip` and the first address seen with it claims it. The IPs live in a store, here Redis through [ioredis](https://github.com/redis/ioredis):
+
+```bash
+$ npm install ioredis --save
+```
+
+```js
+const Redis = require('ioredis')
+const redisStore = require('abusive/redis')
+
+const { isAbusive } = require('abusive')({
+  ip: { store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }) },
+  secret: process.env.ABUSIVE_SECRET
+})
+
+await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, takes the IP
+await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, same person retrying
+await isAbusive({ email: 'john@gmail.com', ip: '203.0.113.7' }) // => true, IP already taken
+```
+
+- **`secret`** hashes every IP and address before it is stored, so Redis never holds either in the clear. Generate it once with `openssl rand -hex 32` and keep it: changing it forgets every IP.
+- **`timeoutMs`** makes a stalled Redis count as a failed check after 1 second, so an outage never blocks signups.
+- **`ip`** is the client address from the one header your platform trusts, such as `req.ip` in Express with `trust proxy` set. Pass it only in the handler that creates the account.
+- **A different address from a taken IP is refused,** even when it is the same person fixing a typo, and so is a second person in the same office.
+- **Use ioredis, not node-redis.** node-redis ignores the option that makes the claim atomic, so every signup passes without any error. See [Store](#store).
+
+The full trade-offs are in [isAbusive](#isabusive-email-ip-).
+
+### Refuse free email providers
+
+If your product is for companies, you may want to refuse Gmail, Yahoo and disposable inboxes altogether:
+
+```js
+const { isRejectedEmail } = require('abusive')({
+  rejectedDomains: require('free-email-domains')
+})
+
+isRejectedEmail('jane@gmail.com') // => true
+isRejectedEmail('jane@acme.com')  // => false
+```
+
+`isAbusive` never checks this list. Refusing a whole provider is your policy, not abuse, so you decide where to call it.
+
+### Put it together
+
+A signup handler with your Stripe customers as the users and Redis keeping the IPs:
+
+```bash
+$ npm install stripe ioredis --save
+```
+
 ```js
 const Stripe = require('stripe')
 const Redis = require('ioredis')
@@ -41,34 +139,30 @@ const { isAbusive, isRejectedEmail } = require('abusive')({
   rejectedDomains: require('free-email-domains'),
   sibling: { lookup: stripeLookup(new Stripe(process.env.STRIPE_SECRET_KEY), { limit: 500 }) },
   ip: { store: redisStore(new Redis(process.env.REDIS_URL), { timeoutMs: 1000 }) },
-  secret: process.env.ABUSIVE_SECRET
+  secret: process.env.ABUSIVE_SECRET,
+  onAbusive: ({ email, reason }) => console.log('refused %s: %s', email, reason)
 })
 
-await isAbusive({ email: 'destek6@acme.com' }) // => true when destek@acme.com exists
-
-// With an IP, the first address takes it.
-await isAbusive({ email: 'jane@gmail.com', ip }) // => false
-await isAbusive({ email: 'john@gmail.com', ip }) // => true, same IP
+const signup = async ({ email, ip }) => {
+  if (await isAbusive({ email, ip })) {
+    throw new Error('We could not create your account.')
+  }
+  // create the account
+}
 ```
 
-Each rule is on when its group is present. `isRejectedEmail` stays separate, because refusing a list of domains is your policy and not abuse.
+Create the instance once and reuse it. `limit: 500` caps how many Stripe customers one check reads. `onAbusive` tells you why a signup was refused, `sibling` or `ip`, while the user only sees a neutral message: saying that a similar account exists tells an attacker which addresses are registered.
 
-Keep the refusal message neutral. Saying that a similar account exists tells an attacker which addresses are registered.
-
-Give your coding agent this prompt:
+<details>
+<summary>Or give your coding agent this prompt</summary>
 
 ```
 Wire abusive into this project's signup: run npm install abusive free-email-domains, create one instance with require('abusive')({ rejectedDomains: require('free-email-domains'), sibling: { lookup }, ip: { store }, secret: process.env.ABUSIVE_SECRET }) where lookup is stripeLookup from abusive/stripe or a function returning the registered emails at a domain and store is redisStore from abusive/redis with timeoutMs set, refuse the signup with a neutral message when await isAbusive({ email, ip }) is true, where ip is the client address from one header the platform trusts and is passed only in the handler that accepts the signup, never on a check anyone can call, and apply isRejectedEmail only if this project refuses free email providers.
 ```
 
-Customers somewhere else? Swap the `lookup`, see [Lookups](#lookups). To compare two addresses without any setup:
+</details>
 
-```js
-const { isSibling } = require('abusive')
-
-isSibling('d.erek+3@gmail.com', 'derek1@gmail.com') // => true
-isSibling('jane@gmail.com', 'john@gmail.com')       // => false
-```
+That is all you need to start. The rest of this page explains how each rule decides, for when you want to tune it.
 
 ## What counts as a sibling
 
@@ -103,22 +197,45 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 | Argument | Description |
 |---|---|
 | `email` | The address. |
-| `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. The first address seen with it takes it, so pass it only where you accept the signup, never on a check anyone can call. Missing or malformed, the IP rule is skipped and nothing is stored. If it is your proxy's address, everyone after the first signup is refused. |
+| `ip` | The client IP. Optional. |
+
+About the `ip`:
+
+- **Use one address you trust,** such as your platform's client IP header, not a raw `X-Forwarded-For` list. If it is your proxy's address, everyone after the first signup is refused.
+- **The first address seen with it claims it,** so pass it only where you accept the signup, never on a check anyone can call.
+- **Missing or malformed,** the IP rule is skipped and nothing is stored.
 
 It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. The same address coming back is not, so a retry passes, while a corrected typo is refused. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
 
 It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs`, as above, and a timeout on your lookup's client.
 
-- **Addresses are compared as written,** after lowercasing and Unicode folding. `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
+- **Addresses are compared as written,** after lowercasing and the [canonical form](#edge-cases). `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
 - **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception. Providers also reassign IPs, so with no `ttlMs` a stranger can inherit a used one.
 - **An address with two `@` or with whitespace** never takes an IP or is judged by it, so a host's bad input cannot hold one.
 - **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
 
 ### Store
 
-`abusive/redis` works with [ioredis](https://github.com/redis/ioredis) or any client with the same `set(key, value, 'NX')`, or `set(key, value, 'PX', ms, 'NX')` with `ttlMs`, and `get`, or a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit: [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error, and `@upstash/redis` fails every check. Use a custom store with those. Keys start with `abusive:`, or the `prefix` option. `timeoutMs` makes a stalled Redis count as a failed check, and `ttlMs` sets how long an IP stays taken. Without it, an IP stays taken forever. Both must be positive integers, and `timeoutMs` at most 2147483647, or `redisStore` throws. To keep IPs somewhere else, pass an object with one method:
+`redisStore(client, [options])` from `abusive/redis` keeps the IPs in Redis.
 
-`claim(key, value)` atomically stores `value` if `key` is free, and resolves whoever holds it. Keys and values arrive hashed, and how long they last is up to the store. That being atomic is what stops two signups at the same moment from both taking an IP.
+**Clients.** It works with [ioredis](https://github.com/redis/ioredis), or any client with the same `set(key, value, 'NX')`, `set(key, value, 'PX', ms, 'NX')` and `get`. `client` can also be a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit:
+
+- [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error.
+- `@upstash/redis` fails every check.
+
+Use a custom store with those.
+
+**Options.**
+
+| Option | Default | Description |
+|---|---|---|
+| `prefix` | `'abusive:'` | Prepended to every key. |
+| `timeoutMs` | | Makes a stalled Redis count as a failed check. At most 2147483647. |
+| `ttlMs` | | How long an IP stays taken. Without it, an IP stays taken forever. |
+
+`timeoutMs` and `ttlMs` must be positive integers, or `redisStore` throws.
+
+**Custom store.** To keep IPs somewhere else, pass an object with one method, `claim(key, value)`. It stores `value` under `key` if `key` is free, and resolves the value stored under `key`: `value` when it was free, or the one already there. Keys and values arrive hashed, and how long they last is up to the store. It must be atomic: that is what stops two signups at the same moment from both taking an IP.
 
 ## Lookups
 
@@ -126,7 +243,7 @@ A `lookup` tells **abusive** which addresses you already have. It receives a `do
 
 ### Stripe
 
-Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). Setup is in [Quick start](#quick-start).
+Uses your Stripe customers as the registered addresses, through the [customer search API](https://docs.stripe.com/api/customers/search). Setup is in [Put it together](#put-it-together).
 
 Each lookup searches `email~"@<domain>" AND email~"<keyword>"`. When `keyword` is shorter than the 3 characters Stripe needs, it searches nothing, because scanning a whole domain like `gmail.com` takes seconds. So mailboxes such as `ab+x@` are not checked. A dotted address is still checked: `d.e.r.e.k@gmail.com` is searched as `derek`.
 
