@@ -76,6 +76,30 @@ test('the mark outline clears the wordmark and stays inside the desktop cover', 
   }
 })
 
+test('on a short phone the mark stays below the copy', async t => {
+  const { layoutFor, markBounds } = await scene
+  const copy = {
+    right: 375,
+    top: 0,
+    bottom: 366,
+    bodyRight: 360,
+    wordmarkBottom: 107
+  }
+  for (const [width, height] of [
+    [375, 667],
+    [390, 844],
+    [320, 568]
+  ]) {
+    const layout = layoutFor(width, height, copy)
+    const autopilotSway = 6
+    const markTop =
+      layout.home[1] +
+      markBounds(layout.angle).top * layout.scale -
+      autopilotSway
+    t.true(markTop >= copy.bottom, `${width}x${height} mark top ${markTop}`)
+  }
+})
+
 test('the lens center lands under the pointer anywhere on the cover', async t => {
   const { layoutFor, lensUnder } = await scene
   const { MARK } = await brand
