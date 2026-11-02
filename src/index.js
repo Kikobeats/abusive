@@ -135,6 +135,16 @@ const isSearchable = candidate =>
   SAFE_MAILBOX.test(candidate.local) &&
   collapsedInboxOf(candidate) !== ''
 
+const partsOf = email =>
+  typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH
+    ? null
+    : parseEmail(email)
+
+const addressOf = parts => {
+  const address = `${parts.local}@${parts.domain}`
+  return SINGLE_ADDRESS.test(address) ? address : null
+}
+
 const notifyQuietly = (hook, details) => {
   try {
     Promise.resolve(hook(details)).catch(noop)
@@ -237,16 +247,6 @@ const createAbusive = ({
     }
   }
 
-  const singleAddressOf = email => {
-    if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
-      return null
-    }
-    const parts = parseEmail(email)
-    if (parts === null) return null
-    const address = `${parts.local}@${parts.domain}`
-    return SINGLE_ADDRESS.test(address) ? address : null
-  }
-
   const isIpAbusive = (email, address, ip, verified) =>
     reportingFailure(email, () =>
       verified === true
@@ -262,7 +262,7 @@ const createAbusive = ({
       return SIBLING
     }
     if (ipRule === null) return null
-    const address = singleAddressOf(email)
+    const address = addressOf(parts)
     if (address === null) return null
     return (await isIpAbusive(email, address, ip, verified)) ? IP : null
   }
@@ -270,10 +270,7 @@ const createAbusive = ({
   const isAbusive = async check => {
     try {
       const { email, ip, verified = false } = check ?? {}
-      if (typeof email !== 'string' || email.length > MAX_ADDRESS_LENGTH) {
-        return false
-      }
-      const parts = parseEmail(email)
+      const parts = partsOf(email)
       if (parts === null) return false
       const reason = await reasonOf({ email, parts, ip, verified })
       if (reason === null) return false
@@ -288,7 +285,10 @@ const createAbusive = ({
   const takeIp = async check => {
     try {
       const { email, ip } = check ?? {}
-      const address = ipRule === null ? null : singleAddressOf(email)
+      if (ipRule === null) return
+      const parts = partsOf(email)
+      if (parts === null) return
+      const address = addressOf(parts)
       if (address === null) return
       await reportingFailure(email, () => ipRule.takeIp(address, ip))
     } catch (error) {
