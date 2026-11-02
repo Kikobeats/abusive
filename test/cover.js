@@ -211,6 +211,17 @@ test('the lens magnifies what is under it', t => {
   t.true(wgslConstant(wgsl, 'LENS_PINCUSHION') >= 0)
 })
 
+test('the scroll cue points at a README section', t => {
+  const id = read('_coverpage.md').match(
+    /class="cover__scroll" href="#\/\?id=([\w-]+)"/
+  )[1]
+  const headings = read('README.md')
+    .split('\n')
+    .filter(line => line.startsWith('## '))
+    .map(line => line.slice(3).trim().toLowerCase().replace(/\s+/g, '-'))
+  t.true(headings.includes(id), `#${id} is not a README section`)
+})
+
 test('the cover copies the agent prompt from the README', t => {
   const readme = read('README.md')
   const cover = read('_coverpage.md')

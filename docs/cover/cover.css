@@ -277,6 +277,45 @@
   .cover__still img { object-position: 50% 100%; }
 }
 
+.cover__scroll {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  border-radius: 50%;
+  color: var(--cover-muted);
+  border: 1px solid var(--cover-border);
+  background: color-mix(in srgb, var(--cover-bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: cover-scroll-hint 2.4s ease-in-out infinite;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.cover__scroll svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cover__scroll:hover,
+.cover__scroll:focus-visible {
+  color: var(--cover-text);
+  border-color: var(--cover-accent);
+}
+
+@keyframes cover-scroll-hint {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(5px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cover__scene, .cover__still { transition: none; }
+  .cover__scroll { animation: none; }
 }

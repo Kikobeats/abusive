@@ -33,4 +33,7 @@
         </a>
       </nav>
     </div>
+    <a class="cover__scroll" href="#/?id=install" aria-label="Scroll to the documentation">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </a>
   </div>
