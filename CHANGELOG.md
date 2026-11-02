@@ -1,3 +1,14 @@
+## 3.0.0 (2026-11-02)
+
+### ⚠ BREAKING CHANGES
+
+* `verified` is removed. A call with an IP now takes
+  it; to skip the IP rule, leave `ip` out.
+
+### Features
+
+* take the IP whenever one is given ([#12](https://github.com/kikobeats/abusive/issues/12)) ([685e246](https://github.com/kikobeats/abusive/commit/685e246627d7d62ad66e92c0da3e1459fc7f0b5f))
+
 ## 2.1.0 (2026-11-01)
 
 ### Features

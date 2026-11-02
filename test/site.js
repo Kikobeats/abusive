@@ -295,12 +295,12 @@ test('signature headings at every level and in the sidebar are code', t => {
   const page = docsPage({
     body: `
       <aside class="sidebar-nav"><ul>
-        <li><a>isAbusive({ email, ip, verified })</a></li>
+        <li><a>isAbusive({ email, ip })</a></li>
         <li><a>Install</a></li>
         <li><a>abusive(options)</a></li>
       </ul></aside>
       <article class="markdown-section">
-        <h2>isAbusive({ email, ip, verified })</h2>
+        <h2>isAbusive({ email, ip })</h2>
         <h2>Install</h2>
         <h3>abusive(options)</h3>
         <h3>Store</h3>
@@ -316,7 +316,7 @@ test('signature headings at every level and in the sidebar are code', t => {
   t.deepEqual(marked, [
     'A isAbusive()',
     'A abusive()',
-    'H2 isAbusive({ email, ip, verified })',
+    'H2 isAbusive({ email, ip })',
     'H3 abusive(options)',
     'H4 stripeLookup(client, [options])'
   ])

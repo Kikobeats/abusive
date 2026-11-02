@@ -44,12 +44,11 @@ const { isAbusive, isRejectedEmail } = require('abusive')({
   secret: process.env.ABUSIVE_SECRET
 })
 
-// Anyone can call this: it only looks for siblings.
 await isAbusive({ email: 'destek6@acme.com' }) // => true when destek@acme.com exists
 
-// Once the address is verified, for an account you have not accepted yet.
-await isAbusive({ email: 'jane@gmail.com', ip, verified: true }) // => false
-await isAbusive({ email: 'john@gmail.com', ip, verified: true }) // => true, same IP
+// With an IP, the first address takes it.
+await isAbusive({ email: 'jane@gmail.com', ip }) // => false
+await isAbusive({ email: 'john@gmail.com', ip }) // => true, same IP
 ```
 
 Each rule is on when its group is present. `isRejectedEmail` stays separate, because refusing a list of domains is your policy and not abuse.
@@ -59,7 +58,7 @@ Keep the refusal message neutral. Saying that a similar account exists tells an 
 Give your coding agent this prompt:
 
 ```
-Wire abusive into this project's signup: run npm install abusive free-email-domains, create one instance with require('abusive')({ rejectedDomains: require('free-email-domains'), sibling: { lookup }, ip: { store }, secret: process.env.ABUSIVE_SECRET }) where lookup is stripeLookup from abusive/stripe or a function returning the registered emails at a domain and store is redisStore from abusive/redis with timeoutMs set, refuse the signup with a neutral message when await isAbusive({ email }) is true, check again with await isAbusive({ email, ip, verified: true }) once the address is verified, and apply isRejectedEmail only if this project refuses free email providers.
+Wire abusive into this project's signup: run npm install abusive free-email-domains, create one instance with require('abusive')({ rejectedDomains: require('free-email-domains'), sibling: { lookup }, ip: { store }, secret: process.env.ABUSIVE_SECRET }) where lookup is stripeLookup from abusive/stripe or a function returning the registered emails at a domain and store is redisStore from abusive/redis with timeoutMs set, refuse the signup with a neutral message when await isAbusive({ email, ip }) is true, where ip is the client address from one header the platform trusts and is passed only in the handler that accepts the signup, never on a check anyone can call, and apply isRejectedEmail only if this project refuses free email providers.
 ```
 
 Customers somewhere else? Swap the `lookup`, see [Lookups](#lookups). To compare two addresses without any setup:
@@ -99,15 +98,14 @@ A numbered address is a different inbox, so it can belong to a different person:
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
-## isAbusive({ email, ip, verified })
+## isAbusive({ email, ip })
 
 | Argument | Description |
 |---|---|
 | `email` | The address. |
-| `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. Missing or malformed, the IP rule is skipped. If it is your proxy's address, everyone after the first signup is refused. |
-| `verified` | `true` once the address is verified, for an account you have not accepted yet. Only then is the IP rule applied and the IP taken, so an endpoint anyone can call cannot take one. Defaults to `false`. |
+| `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. The first address seen with it takes it, so pass it only where you accept the signup, never on a check anyone can call. Missing or malformed, the IP rule is skipped and nothing is stored. If it is your proxy's address, everyone after the first signup is refused. |
 
-It is abusive when `findSibling` finds a sibling, or when a different address already signed up from this IP. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
+It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. The same address coming back is not, so a retry passes, while a corrected typo is refused. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
 
 It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs`, as above, and a timeout on your lookup's client.
 
@@ -216,7 +214,7 @@ It must be a positive integer: an invalid value throws a `TypeError`, and an inv
 
 | Method | Returns |
 |---|---|
-| `.isAbusive({ email, ip, verified })` | `Promise` of `true` or `false`. See [isAbusive](#isabusive-email-ip-verified-). |
+| `.isAbusive({ email, ip })` | `Promise` of `true` or `false`. See [isAbusive](#isabusive-email-ip-). |
 | `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `sibling.min`), or `null`. |
 | `.isSibling(candidate, existing)` | `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`. |
 | `.isRejectedEmail(email)` | `true` when the address is on a domain in `rejectedDomains`. |

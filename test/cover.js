@@ -397,7 +397,7 @@ test('every cover link into the docs points at a README section', t => {
     .split('\n')
     .filter(line => /^#{1,6} /.test(line))
     .map(line => docsifySlug(line.replace(/^#+ /, '')))
-  t.true(headings.includes('isabusive-email-ip-verified-'))
+  t.true(headings.includes('isabusive-email-ip-'))
   t.deepEqual(ids, ['quick-start', 'install'])
   for (const id of ids) {
     t.true(headings.includes(id), `#${id} is not a README section`)
@@ -412,8 +412,8 @@ test('the cover copies the agent prompt from the README', t => {
   )[0]
   t.is(cover.match(/data-prompt="([^"]*)"/)[1], prompt)
   for (const api of [
-    'isAbusive({ email })',
-    'verified: true',
+    'isAbusive({ email, ip })',
+    'never on a check anyone can call',
     'isRejectedEmail',
     'abusive/stripe',
     'abusive/redis'
