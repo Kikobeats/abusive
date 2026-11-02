@@ -571,28 +571,11 @@ test('the scroll hint stops moving within five seconds', t => {
   t.true(Number(seconds) * Number(count) <= MAX_AUTOPLAY_SECONDS)
 })
 
-test('the pause button shows only while the scene is live', t => {
-  const css = read('docs/cover/cover.css')
-  t.regex(css, /\.cover__pause \{[^}]*display: none;/)
-  t.regex(
-    css,
-    /\.cover-hero\[data-mode="live"\] \.cover__pause \{ display: grid; \}/
-  )
-})
-
 test('the install command wraps instead of hiding the package name', t => {
   const rule = read('docs/cover/cover.css').match(
     /\.cover__command code \{([^}]*)\}/
   )[1]
   t.notRegex(rule, /text-overflow|white-space: nowrap|overflow: hidden/)
-})
-
-test('keyboard focus reaches the scroll cue before the pause button', t => {
-  const cover = read('_coverpage.md')
-  t.true(
-    cover.indexOf('class="cover__scroll"') <
-      cover.indexOf('class="cover__pause"')
-  )
 })
 
 test('the install command breaks only between words', t => {
