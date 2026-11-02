@@ -10,7 +10,7 @@ export const BANNER = {
   chip: '#161b23',
   chipBorder: '#2a313c',
   wordmark: { text: 'abusive', size: 132, tracking: -0.035 },
-  tagline: { text: 'One free plan per person.', size: 40 },
+  tagline: { text: 'Catch the same person signing up twice.', size: 40 },
   command: {
     prompt: '$ ',
     text: 'npm install abusive free-email-domains',

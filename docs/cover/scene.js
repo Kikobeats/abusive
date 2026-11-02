@@ -17,7 +17,7 @@ const MOBILE_ANGLE = 0
 const ANGLE_SWAY = 0.035
 const MOBILE_GUTTER = 16
 const MOBILE_SCALE_MAX = 7
-const MOBILE_STATUS_RESERVE = 56
+const MOBILE_BOTTOM_MARGIN = 24
 const DRIFT_PX_PER_SECOND = 7
 const RING_SAMPLES = 48
 
@@ -97,7 +97,7 @@ function mobileLayout (width, height, textBox) {
   )
   const markWidth = (units.right - units.left) * scale
   const markHeight = (units.bottom - units.top) * scale
-  const floor = height - MOBILE_STATUS_RESERVE
+  const floor = height - MOBILE_BOTTOM_MARGIN
   const boxTop = Math.min(
     top + Math.max(24, (floor - top - markHeight) * 0.5),
     floor - markHeight - 12

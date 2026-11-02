@@ -5,8 +5,6 @@ const { join } = require('node:path')
 
 const { default: test } = require('ava')
 
-const { createAbusive, isSibling } = require('../src')
-
 const scene = import('../docs/cover/scene.js')
 const content = import('../docs/cover/content.js')
 const brand = import('../docs/brand/mark.js')
@@ -15,14 +13,25 @@ const ROOT = join(__dirname, '..')
 const read = file => readFileSync(join(ROOT, file), 'utf8')
 
 const DESKTOP_TEXT = {
-  right: 528,
-  top: 269,
-  bottom: 631,
-  bodyRight: 504,
-  wordmarkBottom: 361
+  right: 614,
+  top: 247,
+  bottom: 653,
+  bodyRight: 512,
+  wordmarkBottom: 339
 }
 
-const PILL_ADDRESSES = 5
+const MEASURED_TEXT = [
+  [[1440, 900], DESKTOP_TEXT],
+  [
+    [1024, 768],
+    { right: 479, top: 207, bottom: 561, bodyRight: 455, wordmarkBottom: 272 }
+  ],
+  [
+    [1920, 1080],
+    { right: 614, top: 337, bottom: 743, bodyRight: 512, wordmarkBottom: 429 }
+  ]
+]
+
 const DEGREES = Math.PI / 180
 const ANGLE_TOLERANCE = 1e-6
 
@@ -35,9 +44,6 @@ const wgslConstant = (wgsl, name) => {
     ? Number(degrees[1]) * DEGREES
     : Number(value.replace(/u$/, ''))
 }
-
-const sameInboxOnly = existing =>
-  createAbusive({ sibling: { lookup: () => [existing], min: 2 } })
 
 test('a narrow cover is the mobile layout and a wide cover is the desktop one', async t => {
   const { layoutFor } = await scene
@@ -53,12 +59,8 @@ test('the desktop scrim starts at the measured ink', async t => {
 
 test('the mark outline clears the wordmark and stays inside the desktop cover', async t => {
   const { layoutFor, MARK_OUTLINE } = await scene
-  for (const [width, height] of [
-    [1440, 900],
-    [1024, 768],
-    [1920, 1080]
-  ]) {
-    const layout = layoutFor(width, height, DESKTOP_TEXT)
+  for (const [[width, height], text] of MEASURED_TEXT) {
+    const layout = layoutFor(width, height, text)
     const c = Math.cos(layout.angle)
     const s = Math.sin(layout.angle)
     for (const [x, y] of MARK_OUTLINE) {
@@ -67,36 +69,11 @@ test('the mark outline clears the wordmark and stays inside the desktop cover', 
       t.true(px >= 0 && px <= width, `${width}x${height} x=${px}`)
       t.true(py >= 0 && py <= height, `${width}x${height} y=${py}`)
       t.true(
-        py > DESKTOP_TEXT.wordmarkBottom || px > DESKTOP_TEXT.right,
+        py > text.wordmarkBottom || px > text.right,
         `${width}x${height} overlaps the wordmark at ${px},${py}`
       )
     }
   }
-})
-
-test('the status pill counts five same-inbox siblings of one another', async t => {
-  const { SAME_INBOX } = await content
-  const pill = read('_coverpage.md').match(/data-status-text>([^<]+)</)[1]
-  t.is(pill, `${PILL_ADDRESSES} addresses &rarr; 1 inbox`)
-  t.is(new Set(SAME_INBOX).size, PILL_ADDRESSES)
-  for (const candidate of SAME_INBOX) {
-    for (const existing of SAME_INBOX) {
-      if (candidate === existing) continue
-      t.is(
-        await sameInboxOnly(existing).findSibling(candidate),
-        existing,
-        `${candidate} is not the same inbox as ${existing}`
-      )
-    }
-  }
-})
-
-test('a numbered sibling alone does not count as the same inbox', async t => {
-  t.is(
-    await sameInboxOnly('derek1@gmail.com').findSibling('derek2@gmail.com'),
-    null
-  )
-  t.true(isSibling('derek2@gmail.com', 'derek1@gmail.com'))
 })
 
 test('encoded rows carry each inbox line split at the local part', async t => {

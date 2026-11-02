@@ -1,11 +1,3 @@
-export const SAME_INBOX = Object.freeze([
-  'derek@gmail.com',
-  'd.erek@gmail.com',
-  'derek+promo@gmail.com',
-  'de.rek+3@googlemail.com',
-  'd.e.r.e.k@gmail.com'
-])
-
 export const INBOX_LINES = Object.freeze([
   ['derek', 'gmail.com'],
   ['d.erek', 'gmail.com'],

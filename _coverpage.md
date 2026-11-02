@@ -13,7 +13,7 @@
         <img class="cover__logo" src="static/mark.svg" alt="" width="60" height="60">
         abusive
       </h1>
-      <p class="cover__tagline">One free plan per&nbsp;person.</p>
+      <p class="cover__tagline">Catch the same person signing&nbsp;up&nbsp;twice.</p>
       <div class="cover__install">
         <div class="cover__meta">
           <button type="button" class="cover__copy-prompt" data-copy-prompt data-prompt="Wire abusive into this project's signup: run npm install abusive free-email-domains, create one instance with require('abusive')({ rejectedDomains: require('free-email-domains'), sibling: { lookup }, ip: { store }, secret: process.env.ABUSIVE_SECRET }) where lookup is stripeLookup from abusive/stripe or a function returning the registered emails at a domain and store is redisStore from abusive/redis with timeoutMs set, refuse the signup with a neutral message when await isAbusive({ email }) is true, check again with await isAbusive({ email, ip, verified: true }) once the address is verified, and apply isRejectedEmail only if this project refuses free email providers."><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg><span data-copy-prompt-label>Copy prompt</span></button>
@@ -33,5 +33,4 @@
         </a>
       </nav>
     </div>
-    <p class="cover__status" data-cover-status aria-hidden="true"><i class="cover__pulse"></i><span data-status-text>5 addresses &rarr; 1 inbox</span></p>
   </div>
