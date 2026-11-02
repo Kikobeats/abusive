@@ -105,7 +105,6 @@ img {
   top: 12px;
 }
 
-
 @keyframes octocat-wave {
   0%,
   100% {
@@ -145,7 +144,6 @@ img {
   animation: octocat-wave 560ms ease-in-out;
 }
 
-
 main {
   display: block;
   position: relative;
@@ -155,6 +153,8 @@ main {
 .sidebar {
   background-color: var(--bg-color);
   border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   left: 0;
   overflow-y: auto;
@@ -173,11 +173,6 @@ main {
 
 .sidebar.show {
   transform: none;
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
 }
 
 .sidebar > * {
@@ -298,7 +293,6 @@ main > .content {
 .sidebar.show ~ .content {
   margin-left: var(--sidebar-width);
 }
-
 
 .markdown-section {
   line-height: 1.7;
@@ -447,7 +441,6 @@ main > .content {
   margin: 48px 0;
 }
 
-
 .markdown-section table {
   border-collapse: collapse;
   display: block;
@@ -480,7 +473,6 @@ main > .content {
 .markdown-section table:has(th:nth-child(4)) td:last-child {
   min-width: 22em;
 }
-
 
 .markdown-section code {
   background: var(--surface-color);
@@ -566,7 +558,6 @@ main > .content {
 .codecopy-btn:hover {
   color: var(--accent-color) !important;
 }
-
 
 section.cover {
   display: none;
@@ -775,8 +766,8 @@ body:not(.sticky) .sidebar {
   outline: none;
 }
 
-.sidebar .search .visually-hidden {
-  clip: rect(0 0 0 0);
+.visually-hidden {
+  clip-path: inset(50%);
   height: 1px;
   overflow: hidden;
   position: absolute;

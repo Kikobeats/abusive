@@ -11,7 +11,9 @@ import {
 const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 const DPR_RANGE = [1, 2]
 const MAX_STEP_SECONDS = 0.05
+const LIVE_TIMEOUT_MS = 5000
 const COPIED_MS = 1400
+const COPIED_LABEL = 'Copied'
 const COPIED_STATUS = 'Copied to clipboard'
 const COPY_FAILED_STATUS = 'Could not copy'
 
@@ -22,6 +24,7 @@ const copyStatus = cover.querySelector('[data-copy-status]')
 const copyReset = new WeakMap()
 
 let stopRendering = () => {}
+let statusReset = null
 
 const hasFailed = () => cover.dataset.mode === 'fallback'
 
@@ -221,41 +224,33 @@ function exposeTimings (gpuTimer) {
   })
 }
 
-function scheduleReset (button, reset) {
-  const pending = copyReset.get(button)
-  if (pending) clearTimeout(pending)
-  copyReset.set(
-    button,
-    setTimeout(() => {
-      copyReset.delete(button)
-      reset()
-    }, COPIED_MS)
-  )
-}
-
-async function copyText (button, text) {
-  try {
-    await navigator.clipboard.writeText(text)
-    button.dataset.copied = 'true'
-    return true
-  } catch {
-    delete button.dataset.copied
-    return false
-  }
+function announce (message) {
+  copyStatus.textContent = message
+  clearTimeout(statusReset)
+  statusReset = setTimeout(() => {
+    copyStatus.textContent = ''
+  }, COPIED_MS)
 }
 
 function bindCopy (button, readText, label) {
   const idle = label?.textContent
+  const showIdle = () => {
+    delete button.dataset.copied
+    if (label) label.textContent = idle
+  }
   button.addEventListener('click', async () => {
-    const copied = await copyText(button, readText())
-    copyStatus.textContent = copied ? COPIED_STATUS : COPY_FAILED_STATUS
-    if (label) label.textContent = copied ? 'Copied' : idle
-    if (!copied) return
-    scheduleReset(button, () => {
-      delete button.dataset.copied
-      copyStatus.textContent = ''
-      if (label) label.textContent = idle
-    })
+    clearTimeout(copyReset.get(button))
+    try {
+      await navigator.clipboard.writeText(readText())
+    } catch {
+      showIdle()
+      announce(COPY_FAILED_STATUS)
+      return
+    }
+    button.dataset.copied = 'true'
+    if (label) label.textContent = COPIED_LABEL
+    announce(COPIED_STATUS)
+    copyReset.set(button, setTimeout(showIdle, COPIED_MS))
   })
 }
 
@@ -271,6 +266,9 @@ function setupCopy () {
 }
 
 setupCopy()
+setTimeout(() => {
+  if (cover.dataset.mode === 'loading') showFallback('timeout')
+}, LIVE_TIMEOUT_MS)
 start().catch(error =>
   showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
 )

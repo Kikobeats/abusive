@@ -19,6 +19,7 @@ const TEXT_BOX = { left: 96, top: 247, right: 614, bottom: 653 }
 const WORDMARK_BOTTOM = 339
 const BODY_RIGHT = 512
 const COPIED_MS = 1400
+const LIVE_TIMEOUT_MS = 5000
 const BEST_FRAME_SECONDS = 4.2
 const MAX_STEP_SECONDS = 0.05
 
@@ -192,11 +193,15 @@ const openCover = async ({
     return nextTimer
   })
   setGlobal('clearTimeout', id => timers.delete(id))
-  const runTimers = () => {
-    const pending = [...timers.values()]
-    timers.clear()
-    pending.forEach(({ callback }) => callback())
+  const runTimers = delay => {
+    for (const [id, { callback, ms }] of [...timers]) {
+      if (ms !== delay) continue
+      timers.delete(id)
+      callback()
+    }
   }
+  const pendingDelays = () =>
+    [...timers.values()].map(({ ms }) => ms).sort((a, b) => a - b)
 
   const gpuHarness = createGpuHarness({ adapter, initError, onError })
   setGlobal('gpuHarness', gpuHarness)
@@ -227,6 +232,7 @@ const openCover = async ({
     flushFrames,
     pendingFrames: () => frames.length,
     runTimers,
+    pendingDelays,
     setPrefersLight,
     close: () => window.close()
   }
@@ -556,27 +562,28 @@ const click = async (page, selector) => {
   await settle()
 }
 
-test.serial('copying the command marks the button until the reset', async t => {
-  const page = await openCover()
-  const button = page.cover.querySelector('[data-copy]')
-  const status = page.cover.querySelector('[role="status"]')
-  t.is(status.textContent, '')
-  await click(page, '[data-copy]')
-  t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
-  t.is(button.dataset.copied, 'true')
-  t.is(status.textContent, 'Copied to clipboard')
-  t.deepEqual(
-    [...page.timers.values()].map(({ ms }) => ms),
-    [COPIED_MS]
-  )
-  page.runTimers()
-  t.false('copied' in button.dataset)
-  t.is(status.textContent, '')
-  page.close()
-})
+const status = page => page.cover.querySelector('[role="status"]').textContent
 
 test.serial(
-  'copying the prompt says Copied, and a second copy restarts the reset',
+  'copying the command marks the button and announces it until the reset',
+  async t => {
+    const page = await openCover()
+    const button = page.cover.querySelector('[data-copy]')
+    t.is(status(page), '')
+    await click(page, '[data-copy]')
+    t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
+    t.is(button.dataset.copied, 'true')
+    t.is(status(page), 'Copied to clipboard')
+    t.deepEqual(page.pendingDelays(), [COPIED_MS, COPIED_MS, LIVE_TIMEOUT_MS])
+    page.runTimers(COPIED_MS)
+    t.false('copied' in button.dataset)
+    t.is(status(page), '')
+    page.close()
+  }
+)
+
+test.serial(
+  'a second copy restarts both resets instead of stacking them',
   async t => {
     const page = await openCover()
     const button = page.cover.querySelector('[data-copy-prompt]')
@@ -585,33 +592,82 @@ test.serial(
     t.is(page.copied[0], button.dataset.prompt)
     t.is(label.textContent, 'Copied')
     await click(page, '[data-copy-prompt]')
-    t.is(page.timers.size, 1)
-    page.runTimers()
+    t.deepEqual(page.pendingDelays(), [COPIED_MS, COPIED_MS, LIVE_TIMEOUT_MS])
+    page.runTimers(COPIED_MS)
     t.is(label.textContent, 'Copy prompt')
     t.false('copied' in button.dataset)
+    t.is(status(page), '')
     page.close()
   }
 )
 
-test.serial('a refused copy leaves the buttons as they were', async t => {
-  let allow = true
-  const page = await openCover({
-    clipboard: () =>
-      allow ? Promise.resolve() : Promise.reject(new Error('denied'))
-  })
-  const button = page.cover.querySelector('[data-copy-prompt]')
-  const label = button.querySelector('[data-copy-prompt-label]')
-  await click(page, '[data-copy-prompt]')
-  allow = false
-  await click(page, '[data-copy-prompt]')
-  t.is(label.textContent, 'Copy prompt')
-  t.false('copied' in button.dataset)
-  t.is(
-    page.cover.querySelector('[role="status"]').textContent,
-    'Could not copy'
-  )
-  await click(page, '[data-copy]')
-  t.false('copied' in page.cover.querySelector('[data-copy]').dataset)
-  t.is(page.timers.size, 1)
-  page.close()
+test.serial(
+  'a refused copy resets its button at once and keeps its own announcement',
+  async t => {
+    let allow = true
+    const page = await openCover({
+      clipboard: () =>
+        allow ? Promise.resolve() : Promise.reject(new Error('denied'))
+    })
+    const button = page.cover.querySelector('[data-copy-prompt]')
+    const label = button.querySelector('[data-copy-prompt-label]')
+    await click(page, '[data-copy-prompt]')
+    allow = false
+    await click(page, '[data-copy-prompt]')
+    t.is(label.textContent, 'Copy prompt')
+    t.false('copied' in button.dataset)
+    t.is(status(page), 'Could not copy')
+    t.deepEqual(page.pendingDelays(), [COPIED_MS, LIVE_TIMEOUT_MS])
+    page.runTimers(COPIED_MS)
+    t.is(status(page), '')
+    page.close()
+  }
+)
+
+test.serial(
+  'one button announcing does not get cleared by the other button',
+  async t => {
+    const page = await openCover()
+    await click(page, '[data-copy-prompt]')
+    await click(page, '[data-copy]')
+    t.is(status(page), 'Copied to clipboard')
+    t.deepEqual(page.pendingDelays(), [
+      COPIED_MS,
+      COPIED_MS,
+      COPIED_MS,
+      LIVE_TIMEOUT_MS
+    ])
+    page.runTimers(COPIED_MS)
+    t.is(status(page), '')
+    t.false('copied' in page.cover.querySelector('[data-copy]').dataset)
+    t.false('copied' in page.cover.querySelector('[data-copy-prompt]').dataset)
+    page.close()
+  }
+)
+
+test.serial(
+  'a cover still loading after the timeout falls back to the still frame',
+  async t => {
+    const page = await openCover()
+    page.runTimers(LIVE_TIMEOUT_MS)
+    t.is(page.cover.dataset.mode, 'fallback')
+    t.is(page.cover.dataset.reason, 'timeout')
+    t.is(page.gpu.loop, null)
+    page.close()
+  }
+)
+
+test.serial('the timeout leaves a live or failed cover alone', async t => {
+  const live = await openCover()
+  live.tick()
+  live.flushFrames()
+  live.runTimers(LIVE_TIMEOUT_MS)
+  t.is(live.cover.dataset.mode, 'live')
+  t.not(live.gpu.loop, null)
+  live.close()
+
+  const failed = await openCover({ adapter: null })
+  failed.runTimers(LIVE_TIMEOUT_MS)
+  t.is(failed.cover.dataset.reason, 'no-adapter')
+  failed.close()
 })

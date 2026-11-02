@@ -6,7 +6,6 @@ struct Params {
   theme: f32,
   fontSize: f32,
   scrim: vec2f,
-  reveal: f32,
   drift: f32,
 }
 
@@ -133,7 +132,7 @@ fn palette() -> Palette {
 }
 
 fn currentLens() -> Lens {
-  return Lens(params.lens.xy, params.lens.z * mix(0.94, 1.0, params.reveal), params.lens.w);
+  return Lens(params.lens.xy, params.lens.z, params.lens.w);
 }
 
 fn hashU(value: u32) -> u32 {
@@ -542,23 +541,23 @@ fn lightCaustic(position: vec2f, lens: Lens) -> f32 {
 fn darkGround(color: vec3f, position: vec2f, lens: Lens, colors: Palette, weight: vec3f) -> vec3f {
   let offset = SHADOW_OFFSET_UNITS * lens.scale;
   let shadowDistance = sdMark(toMarkSpace(position - offset, lens)) * lens.scale;
-  let shadow = exp(-max(shadowDistance, 0.0) / 22.0) * smoothstep(-26.0, 6.0, shadowDistance) * params.reveal;
+  let shadow = exp(-max(shadowDistance, 0.0) / 22.0) * smoothstep(-26.0, 6.0, shadowDistance);
   var lit = color * (1.0 - shadow * 0.62);
   let causticPoint = toMarkSpace(position - offset * 0.82, lens);
   let causticDistance = sdMark(causticPoint);
   let ripple = 0.65 + 0.35 * valueNoise(causticPoint * 0.6 + vec2f(params.time * 0.15, 0.0));
   let caustic = (exp(-pow((causticDistance + 1.5) / 0.75, 2.0)) * 0.9 + smoothstep(0.45, -3.6, causticDistance) * 0.16) * ripple;
-  let energy = caustic * params.reveal * weight.z;
+  let energy = caustic * weight.z;
   lit += colors.accent * energy * 0.42;
   let halo = exp(-max(shadowDistance, 0.0) / 70.0);
-  return lit + colors.accent * halo * 0.035 * params.reveal * weight.z;
+  return lit + colors.accent * halo * 0.035 * weight.z;
 }
 
 fn lightGround(color: vec3f, position: vec2f, distancePx: f32, lens: Lens, colors: Palette) -> vec3f {
   let contactDistance = sdMark(toMarkSpace(position + TO_LIGHT_2D * CONTACT_OFFSET_PX, lens)) * lens.scale;
-  let contact = exp(-max(contactDistance, 0.0) / CONTACT_FALLOFF_PX) * smoothstep(-3.0, 0.0, distancePx) * params.reveal;
+  let contact = exp(-max(contactDistance, 0.0) / CONTACT_FALLOFF_PX) * smoothstep(-3.0, 0.0, distancePx);
   let lit = color * mix(vec3f(1.0), CONTACT_TINT, contact * 0.85);
-  return mix(lit, LIGHT_CAUSTIC * colors.bg, lightCaustic(position, lens) * params.reveal);
+  return mix(lit, LIGHT_CAUSTIC * colors.bg, lightCaustic(position, lens));
 }
 
 fn groundLight(color: vec3f, position: vec2f, distancePx: f32, lens: Lens, colors: Palette, weight: vec3f) -> vec3f {
@@ -580,7 +579,7 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let markPoint = toMarkSpace(position, lens);
   let d = sdMark(markPoint);
   let distancePx = d * lens.scale;
-  let coverage = smoothstep(pixel, -pixel, distancePx) * params.reveal;
+  let coverage = smoothstep(pixel, -pixel, distancePx);
   let weight = fieldWeight(position, markPoint, d, lens);
 
   var gradientMark = vec2f(0.0, 1.0);
@@ -592,11 +591,11 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   if (coverage < 1.0) {
     color = fieldColor(position, colors, weight.x, weight.y, 1.0);
     if (distancePx < 260.0) { color = groundLight(color, position, distancePx, lens, colors, weight); }
-    let localShade = exp(-max(distancePx, 0.0) / LOCAL_VIGNETTE_PX) * params.reveal;
+    let localShade = exp(-max(distancePx, 0.0) / LOCAL_VIGNETTE_PX);
     color *= 1.0 - localShade * mix(0.22, LIGHT_LOCAL_SHADE, params.theme);
-    let outer = exp(-max(distancePx, 0.0) / 7.0) * params.reveal * dark;
+    let outer = exp(-max(distancePx, 0.0) / 7.0) * dark;
     color += COOL_WHITE * outer * pow(towardLight, 3.0) * 0.16 + colors.accent * outer * (1.0 - towardLight) * 0.07;
-    let inLens = smoothstep(pixel, -pixel, lensDistance(markPoint) * lens.scale) * params.reveal;
+    let inLens = smoothstep(pixel, -pixel, lensDistance(markPoint) * lens.scale);
     if (inLens > 0.0) { color = mix(color, lensView(position, markPoint, colors, lens, weight.z), inLens); }
   }
 
@@ -609,7 +608,7 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let darkRimProfile = exp(-abs(distancePx + 0.4) * params.dpr * 0.85);
   let inkHalfWidth = mix(0.55, 1.05, smoothstep(0.35, 0.8, shadowSide));
   let inkProfile = 1.0 - smoothstep(inkHalfWidth - 0.5 * pixel, inkHalfWidth + 0.5 * pixel, abs(distancePx + inkHalfWidth));
-  let rim = mix(darkRimProfile, inkProfile, params.theme) * params.reveal;
+  let rim = mix(darkRimProfile, inkProfile, params.theme);
   let darkRim = mix(DARK_RIM, COOL_WHITE, towardLight);
   let darkRimAlpha = 0.32 + 0.68 * towardLight;
   let lightRimAlpha = 0.28 + 0.66 * smoothstep(0.3, 0.85, shadowSide);

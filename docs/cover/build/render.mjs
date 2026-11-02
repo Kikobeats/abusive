@@ -12,11 +12,7 @@ const atlasPixels = new Uint8Array(atlasPng.width * atlasPng.height)
 for (let i = 0; i < atlasPixels.length; i++) atlasPixels[i] = atlasPng.data[i * 4]
 
 const TEXT_BOXES = JSON.parse(readFileSync(new URL('./text-boxes.json', import.meta.url), 'utf8'))
-const STILL_SECONDS = BEST_FRAME_SECONDS
-const SEQUENCE_SECONDS = [0.2, 0.6, 1.0, 1.4, 1.8, 2.2, 2.6, 3.0]
 const WEBP = { quality: 82, effort: 6 }
-const SHEET_TILE = [720, 450]
-const SHEET_COLUMNS = 2
 
 const FRAMES = [
   { name: 'fallback-dark', width: 1440, height: 900, dpr: 2, theme: 0, text: TEXT_BOXES.desktop },
@@ -25,8 +21,8 @@ const FRAMES = [
   { name: 'fallback-light-mobile', width: 390, height: 844, dpr: 2, theme: 1, text: TEXT_BOXES.mobile }
 ]
 
-async function renderFrame (gpu, frameSpec, seconds = STILL_SECONDS) {
-  const { width, height, dpr, theme, text } = frameSpec
+async function renderFrame (gpu, { width, height, dpr, theme, text }) {
+  const seconds = BEST_FRAME_SECONDS
   const layout = layoutFor(width, height, text)
   const lens = autopilot(seconds, layout)
   const params = sceneParams({ width, height, dpr, seconds, theme, layout, lens })
@@ -43,7 +39,7 @@ const toImage = ({ pixels, width, height }) => sharp(Buffer.from(pixels), { raw:
 function framesFor (mode) {
   const frames = FRAMES.filter((frame) => mode === 'all' || frame.name === mode)
   if (frames.length === 0) {
-    throw new Error(`unknown frame "${mode}", expected all, sequence or one of ${FRAMES.map((frame) => frame.name).join(', ')}`)
+    throw new Error(`unknown frame "${mode}", expected all or one of ${FRAMES.map((frame) => frame.name).join(', ')}`)
   }
   return frames
 }
@@ -58,27 +54,7 @@ async function renderStills (gpu, frames, out) {
   }
 }
 
-async function renderSequence (gpu, out) {
-  mkdirSync(out, { recursive: true })
-  const spec = { ...FRAMES[0], dpr: 1 }
-  const strip = []
-  for (const seconds of SEQUENCE_SECONDS) {
-    const frame = await renderFrame(gpu, spec, seconds)
-    const file = `${out}/reveal-${seconds.toFixed(1)}s.png`
-    await toImage(frame).png().toFile(file)
-    strip.push(await toImage(frame).resize(...SHEET_TILE).png().toBuffer())
-    console.log(file)
-  }
-  const [tileWidth, tileHeight] = SHEET_TILE
-  const rows = Math.ceil(strip.length / SHEET_COLUMNS)
-  await sharp({ create: { width: tileWidth * SHEET_COLUMNS, height: tileHeight * rows, channels: 3, background: '#000' } })
-    .composite(strip.map((input, i) => ({ input, left: (i % SHEET_COLUMNS) * tileWidth, top: Math.floor(i / SHEET_COLUMNS) * tileHeight })))
-    .png()
-    .toFile(`${out}/reveal-sequence.png`)
-}
-
-const [mode = 'all', out] = process.argv.slice(2)
+const [mode = 'all', out = ROOT] = process.argv.slice(2)
 const gpu = await vgpu.init()
-if (mode === 'sequence') await renderSequence(gpu, out ?? `${ROOT}scratch`)
-else await renderStills(gpu, framesFor(mode), out ?? ROOT)
+await renderStills(gpu, framesFor(mode), out)
 gpu.dispose()

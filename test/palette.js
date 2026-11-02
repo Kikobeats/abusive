@@ -193,3 +193,42 @@ for (const [field, token] of Object.entries(BANNER_TOKENS)) {
     t.is(BANNER[field].toLowerCase(), THEMES.dark.style[token].toLowerCase())
   })
 }
+
+const SHADER_TOKENS = {
+  BG: '--cover-bg',
+  TEXT: '--cover-text',
+  MUTED: '--cover-muted',
+  ACCENT: '--cover-accent'
+}
+
+const shaderColor = (shader, name) =>
+  shader
+    .match(
+      new RegExp(
+        `^const ${name} = vec3f\\(([\\d.]+), ([\\d.]+), ([\\d.]+)\\);$`,
+        'm'
+      )
+    )
+    .slice(1, 4)
+    .map(channel => Math.round(Number(channel) * CHANNEL_MAX))
+
+const hexChannels = hex =>
+  hex
+    .match(HEX_COLOR)
+    .slice(1, 4)
+    .map(channel => parseInt(channel, 16))
+
+for (const [theme, prefix] of [
+  ['dark', 'DARK'],
+  ['light', 'LIGHT']
+]) {
+  for (const [suffix, token] of Object.entries(SHADER_TOKENS)) {
+    test(`${theme}: the shader ${prefix}_${suffix} is ${token}`, t => {
+      const shader = readCss('docs/cover/shaders/lens.wgsl')
+      t.deepEqual(
+        shaderColor(shader, `${prefix}_${suffix}`),
+        hexChannels(THEMES[theme].cover[token])
+      )
+    })
+  }
+}

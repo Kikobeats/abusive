@@ -9,7 +9,7 @@ The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh)
 - `scene.js` lays the mark out from `docs/brand/mark.js`, so the glass is the committed logo. `test/cover.js` checks that the shader's copies of the mark geometry, the atlas layout and the line encoding are the same numbers.
 - `content.js` holds the inbox lines on the wall.
 - Rendering pauses when the cover is off screen or the tab is hidden, and the DPR is capped at 2.
-- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`, and `data-reason` on the cover says why. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
+- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`, and `data-reason` on the cover says why. A cover that is not live 5 seconds after it loads, for example because the CDN stalls, falls back too, with the reason `timeout`. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
 - The theme follows `prefers-color-scheme` and switches live. The layout switches to mobile with the same `max-width: 759px` query as `cover.css`.
 - Below the tagline, the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent. Both announce the result through a status region.
 
@@ -23,4 +23,4 @@ $ npm install
 $ npm run build
 ```
 
-`build/atlas.mjs` draws the JetBrains Mono glyph atlas, `build/prepare.mjs` prepares the shader, and `build/render.mjs` renders the fallback frames headlessly with `vgpu/node`, using the copy's measured boxes in `build/text-boxes.json`. `node build/render.mjs <frame>` renders one frame by name (`fallback-dark`, `fallback-light`, `fallback-dark-mobile`, `fallback-light-mobile`), and every still also gets a PNG copy in the ignored `scratch/` folder. `node build/render.mjs sequence [dir]` writes the intro as frames and a contact sheet to `dir`, `scratch/` by default. `prepare.mjs` strips the local path before writing `shaders.js`, so that file does not depend on the directory the build runs from.
+`build/atlas.mjs` draws the JetBrains Mono glyph atlas, `build/prepare.mjs` prepares the shader, and `build/render.mjs` renders the fallback frames headlessly with `vgpu/node`, using the copy's measured boxes in `build/text-boxes.json`. `node build/render.mjs <frame>` renders one frame by name (`fallback-dark`, `fallback-light`, `fallback-dark-mobile`, `fallback-light-mobile`), and every still also gets a PNG copy in the ignored `scratch/` folder. `prepare.mjs` strips the local path before writing `shaders.js`, so that file does not depend on the directory the build runs from.

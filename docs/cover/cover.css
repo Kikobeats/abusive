@@ -109,7 +109,6 @@
   filter: drop-shadow(0.03em 0.05em 0.04em var(--cover-shadow)) drop-shadow(-0.08em -0.1em 0.3em var(--cover-glow));
 }
 
-
 .cover__tagline {
   margin: 22px 0 0;
   font-family: var(--cover-font-body);
@@ -129,23 +128,6 @@
   align-items: center;
   gap: 8px;
   font-size: 16px;
-}
-
-.cover__copy-prompt:focus-visible,
-.cover__copy:focus-visible,
-.cover__link:focus-visible {
-  outline: 2px solid var(--cover-accent);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-
-.cover__status {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .cover__command {
@@ -197,7 +179,6 @@
 .cover__copy-prompt svg { fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cover__copy-prompt:hover { color: var(--cover-text); }
 .cover__copy-prompt[data-copied="true"] { color: var(--cover-accent); }
-
 
 .cover__copy {
   flex: none;

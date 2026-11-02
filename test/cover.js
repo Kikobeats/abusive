@@ -150,27 +150,6 @@ test('the desktop vertical wander grows with the cover up to 14px', async t => {
   t.is(layoutFor(1440, 900, DESKTOP_TEXT).wander[1], 14)
 })
 
-test('the desktop entry slides in at most 260px and never from past the edge', async t => {
-  const { layoutFor } = await scene
-  t.is(layoutFor(1440, 900, DESKTOP_TEXT).entry[0], 260)
-  const pushed = layoutFor(1440, 900, {
-    ...DESKTOP_TEXT,
-    right: 1440,
-    wordmarkBottom: 900
-  })
-  t.is(pushed.entry[0], 1440 - pushed.home[0])
-})
-
-test('the intro glide eases in, passes halfway at its midpoint and eases out', async t => {
-  const { introState, INTRO } = await scene
-  t.is(introState(0).glide, 0)
-  t.is(introState(INTRO.glide / 4).glide, 0.0625)
-  t.is(introState(INTRO.glide / 2).glide, 0.5)
-  t.is(introState((INTRO.glide * 3) / 4).glide, 0.9375)
-  t.is(introState(INTRO.glide * 2).glide, 1)
-  t.is(introState(INTRO.appear * 2).appear, 1)
-})
-
 test('the desktop scrim starts at the measured ink', async t => {
   const { layoutFor } = await scene
   const layout = layoutFor(1440, 900, DESKTOP_TEXT)
@@ -401,14 +380,27 @@ test('the lens magnifies what is under it', t => {
   t.true(wgslConstant(wgsl, 'LENS_PINCUSHION') >= 0)
 })
 
+const HEADING_PUNCTUATION =
+  /[\u2000-\u206F\u2E00-\u2E7F\\'!"#$%&()*+,./:;<=>?@[\]^`{|}~]/g
+
+const docsifySlug = heading =>
+  heading
+    .trim()
+    .toLowerCase()
+    .replace(/<[^>]+>/g, '')
+    .replace(HEADING_PUNCTUATION, '')
+    .replace(/\s/g, '-')
+    .replace(/-+/g, '-')
+
 test('every cover link into the docs points at a README section', t => {
   const ids = [
     ...read('_coverpage.md').matchAll(/href="#\/\?id=([\w-]+)"/g)
   ].map(([, id]) => id)
   const headings = read('README.md')
     .split('\n')
-    .filter(line => line.startsWith('## '))
-    .map(line => line.slice(3).trim().toLowerCase().replace(/\s+/g, '-'))
+    .filter(line => /^#{1,6} /.test(line))
+    .map(line => docsifySlug(line.replace(/^#+ /, '')))
+  t.true(headings.includes('isabusive-email-ip-verified-'))
   t.deepEqual(ids, ['quick-start', 'install'])
   for (const id of ids) {
     t.true(headings.includes(id), `#${id} is not a README section`)
@@ -479,29 +471,24 @@ test('a still step keeps the lens tilt a number', async t => {
   t.true(Number.isFinite(state.velocityX))
 })
 
-test('the lens ignores the pointer until the intro glide ends', async t => {
-  const { stepLens, autopilot, lensUnder, INTRO } = await scene
+test('the lens settles under the pointer and back on its autopilot without one', async t => {
+  const { stepLens, autopilot, lensUnder } = await scene
   const pointer = { x: 1100, y: 400 }
-  const early = await followState({ seconds: 0, pointer })
-  stepLens(early, 0)
-  for (let i = 0; i < 40; i++) stepLens(early, 0.05)
-  t.true(early.seconds <= INTRO.glide)
-  const auto = autopilot(early.seconds, early.layout)
-  const under = lensUnder(pointer, early.layout, auto.angle)
-  t.true(
-    Math.abs(early.lens.x - auto.x) < Math.abs(early.lens.x - under.x),
-    'the lens chased the pointer during the intro'
-  )
-
-  const late = await followState({ seconds: 4.2, pointer })
-  settle(stepLens, late)
+  const state = await followState({ seconds: 4.2, pointer })
+  settle(stepLens, state)
   const goal = lensUnder(
     pointer,
-    late.layout,
-    autopilot(late.seconds, late.layout).angle
+    state.layout,
+    autopilot(state.seconds, state.layout).angle
   )
-  t.true(Math.abs(late.lens.x - goal.x) < 1)
-  t.true(Math.abs(late.lens.y - goal.y) < 1)
+  t.true(Math.abs(state.lens.x - goal.x) < 1)
+  t.true(Math.abs(state.lens.y - goal.y) < 1)
+
+  state.pointer = null
+  settle(stepLens, state)
+  const auto = autopilot(state.seconds, state.layout)
+  t.true(Math.abs(state.lens.x - auto.x) < 1)
+  t.true(Math.abs(state.lens.y - auto.y) < 1)
 })
 
 test('a fast pointer tilts the lens to its limit and no further, either way', async t => {
@@ -548,4 +535,32 @@ test('the theme eases at a fixed rate and lands on its target, both ways', async
   t.true(Math.abs(state.theme - 0.9) < 1e-12)
   settle(stepLens, state, 20)
   t.is(state.theme, 0)
+})
+
+test('the scene sends the shader exactly the uniforms it declares', async t => {
+  const { layoutFor, autopilot, sceneParams } = await scene
+  const layout = layoutFor(1440, 900, DESKTOP_TEXT)
+  const params = sceneParams({
+    width: 1440,
+    height: 900,
+    dpr: 1,
+    seconds: 4.2,
+    theme: 0,
+    layout,
+    lens: autopilot(4.2, layout)
+  })
+  const fields = read('docs/cover/shaders/lens.wgsl')
+    .match(/struct Params \{([^}]*)\}/)[1]
+    .match(/\w+(?=:)/g)
+  t.deepEqual(Object.keys(params), fields)
+})
+
+test('every mobile still frame switches on the scene media query', async t => {
+  const { MOBILE_QUERY } = await scene
+  const queries = [
+    ...read('_coverpage.md').matchAll(/<source media="([^"]+)"/g)
+  ].map(([, media]) => media)
+  const mobile = queries.filter(media => media.includes('max-width'))
+  t.is(mobile.length, 2)
+  for (const media of mobile) t.true(media.startsWith(MOBILE_QUERY), media)
 })
