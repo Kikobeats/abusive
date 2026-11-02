@@ -4,12 +4,12 @@ The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh)
 
 ## How it loads
 
-- `_coverpage.md` holds the markup. docsify renders it, and `docs/js/main.js` loads `copy.js` once the markup is in the page, decides whether the cover can render live, and only then preloads vgpu and loads `main.js`. A renderer that fails to load leaves the still frame with the reason `import-failed`.
+- `_coverpage.md` holds the markup. When `docs/js/main.js` runs, it decides whether the cover can render live and, if so, preloads vgpu right away. Each time docsify puts a cover in the page, it mounts `copy.js` on it and, when live, `main.js`. A renderer that fails to load leaves the still frame with the reason `import-failed`, and copy buttons that fail to load are hidden.
 - `main.js` imports `vgpu@0.6.0` from jsdelivr, so nothing is bundled. It renders one fullscreen effect (`shaders/lens.wgsl`, prepared into `shaders.js`) with the glyph atlas (`atlas.png`, laid out by `atlas-layout.js`).
 - `scene.js` lays the mark out from `docs/brand/mark.js`, so the glass is the committed logo. `test/cover.js` checks that the shader's copies of the mark geometry, the atlas layout and the line encoding are the same numbers.
 - `content.js` holds the inbox lines on the wall.
 - Rendering pauses when the cover is off screen, the tab is hidden or the pause button in the corner is pressed, and the DPR is capped at 2. The scroll cue bounces twice, then rests.
-- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`, and `data-reason` on the cover says why. A cover that is not live 5 seconds after it loads, for example because the CDN stalls, falls back too, with the reason `timeout`. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
+- Without WebGPU, when the adapter fails, or with `prefers-reduced-motion` (also when it is turned on while the page is open), the page keeps the static frame from `fallback-*.webp`, and `data-reason` on the cover says why. A cover that is not live 5 seconds after it loads, for example because the CDN stalls, falls back too, with the reason `timeout`. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
 - The theme follows `prefers-color-scheme` and switches live. The layout switches to mobile with the same `max-width: 759px` query as `cover.css`.
 - `copy.js` wires the copy buttons, so they work on the still frame too: the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent. Both announce the result through a status region.
 

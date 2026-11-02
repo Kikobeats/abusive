@@ -87,7 +87,7 @@ const docsPage = ({
   body = '',
   gpu = true,
   reducedMotion = false,
-  importCover = () => Promise.resolve()
+  importCover
 } = {}) => {
   const window = new Window({ url })
   const { document } = window
@@ -110,9 +110,16 @@ const docsPage = ({
     }
   }
   const imports = []
+  const mounts = []
+  const mountingModule = {
+    mountCopy: hero => mounts.push(['copy', hero]),
+    mountScene: hero => mounts.push(['scene', hero])
+  }
   window.importCover = specifier => {
     imports.push(specifier)
-    return importCover(specifier)
+    return importCover
+      ? importCover(specifier, mountingModule)
+      : Promise.resolve(mountingModule)
   }
   const source = read('docs/js/main.js')
   vm.runInNewContext(source.replace(COVER_IMPORT, 'window.importCover('), {
@@ -133,6 +140,7 @@ const docsPage = ({
     window,
     document,
     imports,
+    mounts,
     watching,
     source,
     ready: () => hooks.ready.forEach(fn => fn()),
@@ -153,7 +161,6 @@ test('the docs script imports the copy buttons and the renderer once', t => {
     `${SITE}docs/cover/copy.js`,
     `${SITE}docs/cover/main.js`
   ])
-  t.is(page.watching.size, 0)
   page.window.close()
 })
 
@@ -211,10 +218,10 @@ test('the docs preload the vgpu build the cover imports', t => {
 test('a renderer that fails to load leaves the still frame and says why', async t => {
   const page = docsPage({
     body: COVER,
-    importCover: specifier =>
+    importCover: (specifier, module) =>
       specifier.endsWith('main.js')
         ? Promise.reject(new Error('offline'))
-        : Promise.resolve()
+        : Promise.resolve(module)
   })
   page.ready()
   await settle()
@@ -224,18 +231,59 @@ test('a renderer that fails to load leaves the still frame and says why', async 
   page.window.close()
 })
 
-test('a cover rendered after the docs are ready starts once it appears', async t => {
+test('a cover rendered after the docs are ready is mounted once it appears', async t => {
   const page = docsPage()
   page.ready()
   t.deepEqual(page.imports, [])
-  t.is(page.watching.size, 1)
   page.document.body.insertAdjacentHTML('beforeend', COVER)
   await settle()
-  t.is(page.imports.length, 2)
-  t.is(page.watching.size, 0)
+  const hero = page.document.querySelector('[data-cover]')
+  t.deepEqual(page.mounts, [
+    ['copy', hero],
+    ['scene', hero]
+  ])
   page.document.body.insertAdjacentHTML('beforeend', '<p>later</p>')
   await settle()
-  t.is(page.imports.length, 2)
+  t.is(page.mounts.length, 2)
+  page.window.close()
+})
+
+test('a cover docsify renders again is mounted again', async t => {
+  const page = docsPage({ body: `<div class="cover-main">${COVER}</div>` })
+  page.ready()
+  await settle()
+  const first = page.document.querySelector('[data-cover]')
+  page.document.querySelector('.cover-main').innerHTML = COVER
+  await settle()
+  const second = page.document.querySelector('[data-cover]')
+  t.not(first, second)
+  t.deepEqual(page.mounts, [
+    ['copy', first],
+    ['scene', first],
+    ['copy', second],
+    ['scene', second]
+  ])
+  t.is('expectLive' in second.dataset, true)
+  page.window.close()
+})
+
+test('copy buttons that fail to load are hidden, and the scene still starts', async t => {
+  const page = docsPage({
+    body: COVER,
+    importCover: (specifier, module) =>
+      specifier.endsWith('copy.js')
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve(module)
+  })
+  page.ready()
+  await settle()
+  const hero = page.document.querySelector('[data-cover]')
+  t.true('copyUnavailable' in hero.dataset)
+  t.deepEqual(page.mounts, [['scene', hero]])
+  t.regex(
+    read('docs/cover/cover.css'),
+    /\.cover-hero\[data-copy-unavailable\] :is\(\.cover__copy, \.cover__copy-prompt\) \{ display: none; \}/
+  )
   page.window.close()
 })
 
@@ -374,4 +422,43 @@ test('docsify and the stylesheet agree on where mobile starts', t => {
   const css = read('docs/css/style.css')
   const [, breakpoint] = css.match(/--_mobile-breakpoint: (\d+px);/)
   t.true(css.includes(`@media (max-width: ${breakpoint})`))
+})
+
+const textOf = html => html.replace(/&nbsp;/g, ' ').replace(/<[^>]+>/g, '')
+
+test('every copy of the tagline, the install command and the title agree', async t => {
+  const { BANNER } = await import('../docs/brand/banner.js')
+  const html = read('index.html')
+  const cover = read('_coverpage.md')
+  const tagline = BANNER.tagline.text
+  t.is(textOf(cover.match(/<p class="cover__tagline">(.*?)<\/p>/)[1]), tagline)
+  for (const [attribute, name] of [
+    ['property', 'og:image:alt'],
+    ['name', 'twitter:image:alt']
+  ]) {
+    t.true(metaContent(html, attribute, name).endsWith(`: ${tagline}`), name)
+  }
+
+  const install = BANNER.command.text
+  t.is(cover.match(/<code data-command>(.*?)<\/code>/)[1], install)
+  t.is(metaContent(html, 'name', 'twitter:data1'), install)
+
+  const title = html.match(/<title>(.*?)<\/title>/)[1]
+  t.is(metaContent(html, 'property', 'og:title'), title)
+  t.is(metaContent(html, 'name', 'twitter:title'), title)
+})
+
+test('the CDN is preconnected for the CORS vgpu preload too', t => {
+  t.true(
+    read('index.html').includes(
+      '<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />'
+    )
+  )
+})
+
+test('cover.css sets --cover-bg on :root, which docsify reads before painting a random cover', t => {
+  t.regex(
+    read('docs/cover/cover.css'),
+    /^:root \{\n {2}--cover-bg: #[0-9a-f]{6};/
+  )
 })

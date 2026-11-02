@@ -38,7 +38,9 @@ const READABLE_PAIRS = [
   ['--muted-color', '--bg-color'],
   ['--muted-color', '--surface-color'],
   ['--accent-color', '--bg-color'],
-  ['--token-comment', '--surface-color']
+  ['--token-comment', '--surface-color'],
+  ['--accent-color', '--surface-color'],
+  ['--accent-color', '--accent-soft']
 ]
 
 const readCss = file => readFileSync(join(ROOT, file), 'utf8')

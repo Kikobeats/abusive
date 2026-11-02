@@ -23,7 +23,10 @@ export const ICON = {
   glowOpacity: 0.35
 }
 
-const round = value => +value.toFixed(3)
+const PATH_DECIMALS = 3
+const SCALE_DECIMALS = 5
+
+const round = value => +value.toFixed(PATH_DECIMALS)
 
 const circle = (cx, cy, r, sweep) =>
   `M${round(cx - r)} ${cy}a${r} ${r} 0 1 ${sweep} ${round(
@@ -93,7 +96,9 @@ export const markSvg = () =>
 export const iconMarkTransform = (icon = ICON) => {
   const scale = icon.markSize / MARK.size
   const offset = (icon.size - icon.markSize) / 2
-  return `translate(${offset} ${offset}) scale(${+scale.toFixed(5)})`
+  return `translate(${offset} ${offset}) scale(${+scale.toFixed(
+    SCALE_DECIMALS
+  )})`
 }
 
 export const iconSvg = (icon = ICON) => {

@@ -52,8 +52,6 @@ const COVER_MODULE = 'docs/cover/main.js'
 const COPY_MODULE = 'docs/cover/copy.js'
 const RENDERER_MODULE = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 
-let coverStarted = false
-
 const fallbackReason = () => {
   if (new URLSearchParams(window.location.search).has('fallback')) {
     return 'forced'
@@ -83,27 +81,32 @@ const showStill = (hero, reason) => {
   hero.dataset.reason = reason
 }
 
-const startCover = () => {
-  if (coverStarted) return true
+const mountedHeroes = new WeakSet()
+
+const mountCover = () => {
   const hero = document.querySelector('[data-cover]')
-  if (!hero) return false
-  coverStarted = true
-  loadModule(COPY_MODULE)
-  if (coverFallback) {
-    showStill(hero, coverFallback)
-    return true
-  }
+  if (!hero || mountedHeroes.has(hero)) return
+  mountedHeroes.add(hero)
+  loadModule(COPY_MODULE).then(
+    ({ mountCopy }) => mountCopy(hero),
+    () => {
+      hero.dataset.copyUnavailable = ''
+    }
+  )
+  if (coverFallback) return showStill(hero, coverFallback)
   hero.dataset.expectLive = ''
-  loadModule(COVER_MODULE).catch(() => showStill(hero, 'import-failed'))
-  return true
+  loadModule(COVER_MODULE).then(
+    ({ mountScene }) => mountScene(hero),
+    () => showStill(hero, 'import-failed')
+  )
 }
 
-const startCoverWhenRendered = () => {
-  if (startCover()) return
-  const observer = new window.MutationObserver(() => {
-    if (startCover()) observer.disconnect()
+const watchCover = () => {
+  mountCover()
+  new window.MutationObserver(mountCover).observe(document.body, {
+    childList: true,
+    subtree: true
   })
-  observer.observe(document.body, { childList: true, subtree: true })
 }
 
 const hoistPageTitle = () => {
@@ -139,7 +142,7 @@ window.$docsify = {
   plugins: [
     hook => {
       hook.doneEach(enhancePage)
-      hook.ready(startCoverWhenRendered)
+      hook.ready(watchCover)
       hook.ready(watchSearchResults)
     }
   ]

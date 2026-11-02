@@ -92,7 +92,7 @@
     "contributors": "(git-authors-cli && finepack && git add package.json && git commit -m 'build: contributors' --no-verify) || true",
     "coverage": "c8 report --reporter=text-lcov > coverage/lcov.info",
     "dev": "concurrently \"gulp\" \"pnpm run dev:server\"",
-    "dev:server": "browser-sync start --server --files \"index.html, README.md, static/**/*.(css|js)\"",
+    "dev:server": "browser-sync start --server --files \"index.html, README.md, _coverpage.md, static/**/*.(css|js), docs/cover/**/*.(css|js)\"",
     "lint": "standard",
     "postrelease": "pnpm release:tags && pnpm release:github && (ci-publish || pnpm publish --access=public)",
     "pretest": "pnpm lint",

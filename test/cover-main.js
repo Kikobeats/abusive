@@ -131,10 +131,11 @@ const openCover = async ({
     getBoundingClientRect: () => rect({ ...TEXT_BOX, right: BODY_RIGHT })
   })
 
-  const media = { light: prefersLight, listeners: [] }
+  const media = { light: prefersLight, reduced: false, listeners: [] }
   window.matchMedia = query => ({
     get matches () {
       if (query === '(max-width: 759px)') return mobile
+      if (query === '(prefers-reduced-motion: reduce)') return media.reduced
       return query === '(prefers-color-scheme: light)' && media.light
     },
     addEventListener: (type, listener) => {
@@ -143,6 +144,10 @@ const openCover = async ({
   })
   const setPrefersLight = value => {
     media.light = value
+    media.listeners.forEach(listener => listener())
+  }
+  const setReducedMotion = value => {
+    media.reduced = value
     media.listeners.forEach(listener => listener())
   }
 
@@ -230,8 +235,12 @@ const openCover = async ({
   setGlobal('gpuHarness', gpuHarness)
 
   instance++
-  await import(`${COVER_COPY}?instance=${instance}`)
-  if (!fallback) await import(`${COVER_MAIN}?instance=${instance}`)
+  const { mountCopy } = await import(`${COVER_COPY}?instance=${instance}`)
+  mountCopy(cover)
+  if (!fallback) {
+    const { mountScene } = await import(`${COVER_MAIN}?instance=${instance}`)
+    mountScene(cover)
+  }
   await settle()
 
   const tick = (seconds = 0) => {
@@ -260,6 +269,7 @@ const openCover = async ({
     runTimers,
     pendingDelays,
     setPrefersLight,
+    setReducedMotion,
     close: () => window.close()
   }
 }
@@ -755,3 +765,28 @@ test.serial(
     page.close()
   }
 )
+
+test.serial(
+  'turning on reduced motion while the page is open drops to the still frame',
+  async t => {
+    const page = await openCover()
+    page.tick()
+    page.flushFrames()
+    page.setPrefersLight(true)
+    t.is(page.cover.dataset.mode, 'live')
+    page.setReducedMotion(true)
+    t.is(page.cover.dataset.mode, 'fallback')
+    t.is(page.cover.dataset.reason, 'reduced-motion')
+    t.is(page.gpu.loop, null)
+    page.close()
+  }
+)
+
+test.serial('a cover docsify removed stops rendering', async t => {
+  const page = await openCover()
+  page.tick()
+  page.cover.remove()
+  page.document.dispatchEvent(new page.window.Event('visibilitychange'))
+  t.is(page.gpu.loop, null)
+  page.close()
+})

@@ -25,10 +25,11 @@ const FONTS = {
   mono: font('jetbrains-mono', 'jetbrains-mono-latin-400-normal.woff')
 }
 
+const GLYPH_DECIMALS = 2
 const POINTS = { M: ['x', 'y'], L: ['x', 'y'], Q: ['x1', 'y1', 'x', 'y'], C: ['x1', 'y1', 'x2', 'y2', 'x', 'y'], Z: [] }
 
 const pathData = commands =>
-  commands.map(command => command.type + POINTS[command.type].map(axis => +command[axis].toFixed(2)).join(' ')).join('')
+  commands.map(command => command.type + POINTS[command.type].map(axis => +command[axis].toFixed(GLYPH_DECIMALS)).join(' ')).join('')
 
 const textPath = ({ font, text, size, tracking = 0 }) => {
   const scale = size / font.unitsPerEm
