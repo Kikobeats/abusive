@@ -250,6 +250,21 @@ test('takeIp without an IP rule does nothing, and that is no error', async t => 
   t.deepEqual(errors, [])
 })
 
+test('takeIp without an IP rule still reports a check it cannot read', async t => {
+  const failure = new Error('boom')
+  const errors = []
+  const { takeIp } = createAbusive({
+    onError: ({ error }) => errors.push(error)
+  })
+  const check = {
+    get email () {
+      throw failure
+    }
+  }
+  t.is(await takeIp(check), undefined)
+  t.deepEqual(errors, [failure])
+})
+
 test('nothing is stored in the clear', async t => {
   const { signup, store } = abusive()
   await signup('jane@acme.com')
