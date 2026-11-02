@@ -85,7 +85,7 @@ test('a missing or malformed IP skips the rule and stores nothing', async t => {
   t.deepEqual(errors, [])
 })
 
-test('without an IP only siblings are checked, and nothing is stored', async t => {
+test('a check without an IP neither takes one nor is judged by it', async t => {
   const { isAbusive, store, signup } = abusive()
   t.false(await isAbusive({ email: 'a@acme.com' }))
   t.is(store.values.size, 0)

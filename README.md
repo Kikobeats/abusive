@@ -97,7 +97,7 @@ The fine print, such as canonical form and short mailboxes, is in [Edge cases](#
 | Argument | Description |
 |---|---|
 | `email` | The address. |
-| `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. The first address seen with it takes it. Missing or malformed, the IP rule is skipped. If it is your proxy's address, everyone after the first signup is refused. |
+| `ip` | One address you trust, such as your platform's client IP header, not a raw `X-Forwarded-For` list. The first address seen with it takes it, so pass it only where you accept the signup, never on a check anyone can call. Missing or malformed, the IP rule is skipped and nothing is stored. If it is your proxy's address, everyone after the first signup is refused. |
 
 It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. The same address coming back is not, so a retry passes, while a corrected typo is refused. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
 
