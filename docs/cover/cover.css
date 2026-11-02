@@ -157,8 +157,6 @@
   min-width: 0;
 }
 
-.cover__word { white-space: nowrap; }
-
 .cover__command code::before {
   content: "$ ";
   color: var(--cover-accent);

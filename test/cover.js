@@ -582,13 +582,15 @@ test('the install command breaks only between words', t => {
   const command = read('_coverpage.md').match(
     /<code data-command>(.*?)<\/code>/
   )[1]
-  for (const word of command.replace(/<[^>]+>/g, '').split(' ')) {
-    if (word.includes('-')) {
-      t.true(command.includes(`<span class="cover__word">${word}</span>`), word)
-    }
+  const hyphenated = command
+    .replace(/<[^>]+>/g, '')
+    .split(' ')
+    .filter(word => word.includes('-'))
+  for (const word of hyphenated) {
+    t.true(command.includes(`<span class="cover__word">${word}</span>`), word)
   }
-  t.regex(
-    read('docs/cover/cover.css'),
-    /\.cover__word \{ white-space: nowrap; \}/
-  )
+  const nowrapRule = /\.cover__word \{ white-space: nowrap; \}/
+  const css = read('docs/cover/cover.css')
+  if (hyphenated.length) t.regex(css, nowrapRule)
+  else t.notRegex(css, nowrapRule)
 })

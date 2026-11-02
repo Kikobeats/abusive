@@ -339,7 +339,7 @@ test.serial(
   async t => {
     const page = await openCover({ fallback: 'no-webgpu' })
     await click(page, '[data-copy]')
-    t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
+    t.deepEqual(page.copied, ['npm install abusive'])
     page.close()
   }
 )
@@ -637,7 +637,7 @@ test.serial(
     const button = page.cover.querySelector('[data-copy]')
     t.is(status(page), '')
     await click(page, '[data-copy]')
-    t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
+    t.deepEqual(page.copied, ['npm install abusive'])
     t.is(button.dataset.copied, 'true')
     t.is(status(page), 'Copied to clipboard')
     t.deepEqual(page.pendingDelays(), [COPIED_MS, COPIED_MS, LIVE_TIMEOUT_MS])
