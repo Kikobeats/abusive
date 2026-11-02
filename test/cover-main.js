@@ -139,6 +139,12 @@ const openCover = async ({
   })
 
   const media = { light: prefersLight, reduced: false, listeners: [] }
+  const outsideListeners = []
+  const addDocumentListener = document.addEventListener.bind(document)
+  document.addEventListener = (type, listener, options) => {
+    outsideListeners.push(options?.signal)
+    return addDocumentListener(type, listener, options)
+  }
   window.matchMedia = query => ({
     get matches () {
       if (query === '(max-width: 759px)') return mobile
@@ -147,6 +153,7 @@ const openCover = async ({
     },
     addEventListener: (type, listener, options) => {
       if (type !== 'change') return
+      outsideListeners.push(options?.signal)
       media.listeners.push(listener)
       options?.signal?.addEventListener('abort', () => {
         media.listeners.splice(media.listeners.indexOf(listener), 1)
@@ -291,6 +298,7 @@ const openCover = async ({
     setPrefersLight,
     setReducedMotion,
     destroy: () => scene.destroy(),
+    outsideListeners,
     setVisibility: state => {
       Object.defineProperty(document, 'visibilityState', {
         value: state,
@@ -816,9 +824,17 @@ test.serial(
     const page = await openCover()
     page.tick()
     page.flushFrames()
+    const pause = page.cover.querySelector('[data-pause]')
     page.destroy()
     t.is(page.gpu.loop, null)
     t.true(page.gpu.disposed)
+    t.true(page.outsideListeners.length >= 4)
+    t.true(
+      page.outsideListeners.every(signal => signal?.aborted),
+      'a document or media listener outlives the scene'
+    )
+    pause.click()
+    t.is(pause.getAttribute('aria-pressed'), 'false')
     t.deepEqual(page.observers.disconnected.sort(), ['intersection', 'resize'])
     t.deepEqual(page.pendingDelays(), [])
     page.setVisibility('visible')
