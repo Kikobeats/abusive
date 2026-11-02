@@ -5,13 +5,13 @@ import {
   autopilot,
   createLensEffect,
   layoutFor,
+  lensUnder,
   sceneParams
 } from './scene.js'
 
 const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 const DPR_RANGE = [1, 2]
-const POINTER_IDLE_SECONDS = 2.8
-const FOLLOW_STIFFNESS = 3.2
+const FOLLOW_STIFFNESS = 7
 const THEME_SECONDS = 0.45
 const MAX_STEP_SECONDS = 0.05
 
@@ -185,8 +185,7 @@ function createState () {
     layout: null,
     lens: null,
     velocity: { x: 0, y: 0 },
-    pointer: null,
-    pointerAge: Infinity
+    pointer: null
   }
 }
 
@@ -198,10 +197,9 @@ function bindInput (state) {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     }
-    state.pointerAge = 0
   })
   cover.addEventListener('pointerleave', () => {
-    state.pointerAge = POINTER_IDLE_SECONDS
+    state.pointer = null
   })
   const updateTheme = () => (state.themeTarget = readTheme())
   window
@@ -213,28 +211,17 @@ function bindInput (state) {
   })
 }
 
-function clampToBounds (point, bounds) {
-  return {
-    x: Math.min(bounds[2], Math.max(bounds[0], point.x)),
-    y: Math.min(bounds[3], Math.max(bounds[1], point.y))
-  }
-}
-
 function advance (state, step) {
   state.seconds += step
-  state.pointerAge += step
   const rect = cover.getBoundingClientRect()
   if (!state.layout) {
     state.layout = layoutFor(rect.width, rect.height, textBoxFor(rect))
   }
 
   const auto = autopilot(state.seconds, state.layout)
-  const following =
-    state.pointer &&
-    state.pointerAge < POINTER_IDLE_SECONDS &&
-    state.seconds > INTRO.glide
+  const following = state.pointer && state.seconds > INTRO.glide
   const goal = following
-    ? clampToBounds(state.pointer, state.layout.bounds)
+    ? lensUnder(state.pointer, state.layout, auto.angle)
     : auto
   if (!state.lens) state.lens = { ...auto }
 

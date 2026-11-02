@@ -76,6 +76,25 @@ test('the mark outline clears the wordmark and stays inside the desktop cover', 
   }
 })
 
+test('the lens center lands under the pointer anywhere on the cover', async t => {
+  const { layoutFor, lensUnder } = await scene
+  const { MARK } = await brand
+  const layout = layoutFor(1440, 900, DESKTOP_TEXT)
+  const angle = 0.03
+  for (const pointer of [
+    { x: 40, y: 60 },
+    { x: 720, y: 450 },
+    { x: 1400, y: 880 }
+  ]) {
+    const mark = lensUnder(pointer, layout, angle)
+    const dx = (MARK.center - MARK.size / 2) * layout.scale
+    const lensX = mark.x + Math.cos(angle) * dx - Math.sin(angle) * dx
+    const lensY = mark.y + Math.sin(angle) * dx + Math.cos(angle) * dx
+    t.true(Math.abs(lensX - pointer.x) < 1e-9, `x ${lensX} vs ${pointer.x}`)
+    t.true(Math.abs(lensY - pointer.y) < 1e-9, `y ${lensY} vs ${pointer.y}`)
+  }
+})
+
 test('encoded rows carry each inbox line split at the local part', async t => {
   const { encodeLines, INBOX_LINES } = await content
   const encoded = encodeLines()

@@ -507,20 +507,20 @@ fn luminance(color: vec3f) -> f32 {
   return dot(color, vec3f(0.2126, 0.7152, 0.0722));
 }
 
-fn magnifiedAt(position: vec2f, center: vec2f, r: f32, zoom: f32, colors: Palette) -> f32 {
+fn magnifiedAt(position: vec2f, center: vec2f, r: f32, zoom: f32, colors: Palette, strength: f32) -> f32 {
   let source = center + (position - center) / (zoom * (1.0 + LENS_PINCUSHION * r * r));
-  return luminance(fieldColor(source, colors, 1.0, 1.0, mix(2.6, 3.2, params.theme)));
+  return luminance(fieldColor(source, colors, strength, 1.0, mix(2.6, 3.2, params.theme)));
 }
 
-fn lensView(position: vec2f, markPoint: vec2f, colors: Palette, lens: Lens) -> vec3f {
+fn lensView(position: vec2f, markPoint: vec2f, colors: Palette, lens: Lens, scrim: f32) -> vec3f {
   let dark = 1.0 - params.theme;
   let center = lensWorld(lens);
   let fromCenter = markPoint - LENS_CENTER;
   let r = length(fromCenter) / RING_INNER;
   let spread = LENS_DISPERSION * r * r;
   let source = center + (position - center) / (LENS_ZOOM * (1.0 + LENS_PINCUSHION * r * r));
-  let field = fieldColor(source, colors, 1.0, 1.0, mix(2.6, 3.2, params.theme));
-  let fringe = vec2f(magnifiedAt(position, center, r, LENS_ZOOM * (1.0 - spread), colors), magnifiedAt(position, center, r, LENS_ZOOM * (1.0 + spread), colors)) - luminance(field);
+  let field = fieldColor(source, colors, scrim, 1.0, mix(2.6, 3.2, params.theme));
+  let fringe = vec2f(magnifiedAt(position, center, r, LENS_ZOOM * (1.0 - spread), colors, scrim), magnifiedAt(position, center, r, LENS_ZOOM * (1.0 + spread), colors, scrim)) - luminance(field);
   var color = field + vec3f(fringe.x, 0.0, fringe.y) * smoothstep(0.4, 1.0, r);
   color = mix(color, color * LIGHT_GLASS_TINT, params.theme);
   color += colors.accent * 0.04 * smoothstep(0.55, 1.0, r) * dark;
@@ -597,7 +597,7 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
     let outer = exp(-max(distancePx, 0.0) / 7.0) * params.reveal * dark;
     color += COOL_WHITE * outer * pow(towardLight, 3.0) * 0.16 + colors.accent * outer * (1.0 - towardLight) * 0.07;
     let inLens = smoothstep(pixel, -pixel, lensDistance(markPoint) * lens.scale) * params.reveal;
-    if (inLens > 0.0) { color = mix(color, lensView(position, markPoint, colors, lens), inLens); }
+    if (inLens > 0.0) { color = mix(color, lensView(position, markPoint, colors, lens, weight.z), inLens); }
   }
 
   if (coverage > 0.0) {

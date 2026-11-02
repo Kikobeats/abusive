@@ -22,6 +22,7 @@ const DRIFT_PX_PER_SECOND = 7
 const RING_SAMPLES = 48
 
 export const MARK_CENTER = [MARK.size / 2, MARK.size / 2]
+const LENS_OFFSET = [MARK.center - MARK_CENTER[0], MARK.center - MARK_CENTER[1]]
 
 export const INTRO = Object.freeze({
   appear: 0.6,
@@ -113,7 +114,6 @@ function mobileLayout (width, height, textBox) {
     home: [centerX, centerY],
     wander: [wanderX, 6],
     entry: [width * 0.18, 18],
-    bounds: [centerX - wanderX, centerY - 6, centerX + wanderX, centerY + 6],
     scale,
     markSize: [markWidth, markHeight]
   }
@@ -181,12 +181,6 @@ function desktopLayout (width, height, textBox) {
     home: [homeX, homeY],
     wander,
     entry: [Math.min(260, width - homeX), 34],
-    bounds: [
-      homeX - wander[0],
-      homeY - wander[1],
-      homeX + wander[0],
-      homeY + wander[1]
-    ],
     scale,
     markSize: [
       (units.right - units.left) * scale,
@@ -223,6 +217,16 @@ export function autopilot (seconds, layout) {
     y: hy + wy * Math.sin(seconds * 0.21 + 0.7) + ey * away,
     angle:
       layout.angle + ANGLE_SWAY * Math.sin(seconds * 0.13 + 0.4) - 0.05 * away
+  }
+}
+
+export function lensUnder (pointer, layout, angle) {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  const [x, y] = LENS_OFFSET
+  return {
+    x: pointer.x - (c * x - s * y) * layout.scale,
+    y: pointer.y - (s * x + c * y) * layout.scale
   }
 }
 
