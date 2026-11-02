@@ -8,7 +8,7 @@ export const MARK = {
   handle: { from: 20, to: 46, half: 4, angle: 45 * DEGREES, corner: 0.6 }
 }
 
-export const GRADIENT = { top: '#3cb9fd', bottom: '#1274fe' }
+export const GRADIENT = { top: '#3cb9fd', bottom: '#1274fe', slant: 0.35 }
 
 export const ICON = {
   size: 64,
@@ -16,7 +16,11 @@ export const ICON = {
   markSize: 44,
   top: '#16202e',
   bottom: '#060a10',
-  edge: '#ffffff'
+  edge: '#ffffff',
+  edgeOpacity: 0.14,
+  edgeFade: 0.3,
+  glowBlur: 3,
+  glowOpacity: 0.35
 }
 
 const round = value => +value.toFixed(3)
@@ -75,7 +79,7 @@ const gradient = (id, x1, y1, x2, y2, stops) =>
     .join('')}</linearGradient>`
 
 export const markGradient = id =>
-  gradient(id, 0, 0, MARK.size * 0.35, MARK.size, [
+  gradient(id, 0, 0, MARK.size * GRADIENT.slant, MARK.size, [
     [0, GRADIENT.top],
     [1, GRADIENT.bottom]
   ])
@@ -102,20 +106,20 @@ export const iconSvg = (icon = ICON) => {
       [0, icon.top],
       [1, icon.bottom]
     ]) +
-    gradient('e', 0, 0, 0, size * 0.3, [
-      [0, icon.edge, 0.14],
+    gradient('e', 0, 0, 0, size * icon.edgeFade, [
+      [0, icon.edge, icon.edgeOpacity],
       [1, icon.edge, 0]
     ]) +
     markGradient('m') +
-    '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>' +
+    `<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${icon.glowBlur}"/></filter>` +
     '</defs>' +
     `<rect width="${size}" height="${size}" rx="${radius}" fill="url(#t)"/>` +
     `<rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${
       radius - 0.5
     }" fill="none" stroke="url(#e)"/>` +
-    `<path fill="${
-      GRADIENT.top
-    }" opacity="0.35" filter="url(#glow)" transform="${transform}" d="${markPath()}"/>` +
+    `<path fill="${GRADIENT.top}" opacity="${
+      icon.glowOpacity
+    }" filter="url(#glow)" transform="${transform}" d="${markPath()}"/>` +
     `<path fill="url(#m)" transform="${transform}" d="${markPath()}"/>` +
     '</svg>\n'
   )

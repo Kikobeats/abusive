@@ -232,3 +232,15 @@ for (const [theme, prefix] of [
     })
   }
 }
+
+test('the browser theme colours are the page backgrounds', t => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8')
+  for (const theme of ['light', 'dark']) {
+    const color = html.match(
+      new RegExp(
+        `<meta name="theme-color" content="(#[0-9a-f]{6})" media="\\(prefers-color-scheme: ${theme}\\)"`
+      )
+    )[1]
+    t.is(color, THEMES[theme].style['--bg-color'])
+  }
+})

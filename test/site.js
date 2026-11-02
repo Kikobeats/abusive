@@ -144,12 +144,15 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 const COVER = '<div data-cover data-mode="loading"></div>'
 
-test('the docs script imports the cover once', t => {
+test('the docs script imports the copy buttons and the renderer once', t => {
   const page = docsPage({ body: COVER })
   t.is(page.source.split(COVER_IMPORT).length - 1, 1)
   page.ready()
   page.ready()
-  t.deepEqual(page.imports, [`${SITE}docs/cover/main.js`])
+  t.deepEqual(page.imports, [
+    `${SITE}docs/cover/copy.js`,
+    `${SITE}docs/cover/main.js`
+  ])
   t.is(page.watching.size, 0)
   page.window.close()
 })
@@ -164,9 +167,9 @@ const coverStart = options => {
   const preloads = [
     ...page.document.querySelectorAll('link[rel="modulepreload"]')
   ].map(link => `${link.hasAttribute('crossorigin')} ${link.href}`)
-  const started = page.imports.length
+  const modules = page.imports.map(url => url.replace(SITE, ''))
   page.window.close()
-  return { mode, reason, expectLive, preloads, started }
+  return { mode, reason, expectLive, preloads, modules }
 }
 
 test('a cover that can render live hides the still frame and preloads vgpu', t => {
@@ -175,11 +178,11 @@ test('a cover that can render live hides the still frame and preloads vgpu', t =
     reason: undefined,
     expectLive: '',
     preloads: [`true ${RENDERER}`],
-    started: 1
+    modules: ['docs/cover/copy.js', 'docs/cover/main.js']
   })
 })
 
-test('each reason to keep the still frame is recorded and skips the vgpu preload', t => {
+test('each reason to keep the still frame is recorded and loads only the copy buttons', t => {
   for (const [options, reason] of [
     [{ url: `${SITE}?fallback` }, 'forced'],
     [{ reducedMotion: true }, 'reduced-motion'],
@@ -192,7 +195,7 @@ test('each reason to keep the still frame is recorded and skips the vgpu preload
         reason,
         expectLive: undefined,
         preloads: [],
-        started: 1
+        modules: ['docs/cover/copy.js']
       },
       reason
     )
@@ -205,14 +208,19 @@ test('the docs preload the vgpu build the cover imports', t => {
   t.false(read('index.html').includes(RENDERER))
 })
 
-test('a cover module that fails to load leaves the still frame', async t => {
+test('a renderer that fails to load leaves the still frame and says why', async t => {
   const page = docsPage({
     body: COVER,
-    importCover: () => Promise.reject(new Error('offline'))
+    importCover: specifier =>
+      specifier.endsWith('main.js')
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve()
   })
   page.ready()
   await settle()
-  t.is(page.document.querySelector('[data-cover]').dataset.mode, 'fallback')
+  const { mode, reason } = page.document.querySelector('[data-cover]').dataset
+  t.is(mode, 'fallback')
+  t.is(reason, 'import-failed')
   page.window.close()
 })
 
@@ -223,11 +231,11 @@ test('a cover rendered after the docs are ready starts once it appears', async t
   t.is(page.watching.size, 1)
   page.document.body.insertAdjacentHTML('beforeend', COVER)
   await settle()
-  t.is(page.imports.length, 1)
+  t.is(page.imports.length, 2)
   t.is(page.watching.size, 0)
   page.document.body.insertAdjacentHTML('beforeend', '<p>later</p>')
   await settle()
-  t.is(page.imports.length, 1)
+  t.is(page.imports.length, 2)
   page.window.close()
 })
 

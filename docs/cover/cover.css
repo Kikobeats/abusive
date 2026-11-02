@@ -272,7 +272,7 @@
   background: color-mix(in srgb, var(--cover-bg) 78%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
-  animation: cover-scroll-hint 2.4s ease-in-out infinite;
+  animation: cover-scroll-hint 2.4s ease-in-out 2;
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -286,6 +286,41 @@
 
 .cover__scroll:hover,
 .cover__scroll:focus-visible {
+  color: var(--cover-text);
+  border-color: var(--cover-accent);
+}
+
+.cover__pause {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  display: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--cover-muted);
+  border: 1px solid var(--cover-border);
+  background: color-mix(in srgb, var(--cover-bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.cover-hero[data-mode="live"] .cover__pause { display: grid; }
+
+.cover__pause svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+.cover__pause[aria-pressed="false"] .cover__play-icon,
+.cover__pause[aria-pressed="true"] .cover__pause-icon { display: none; }
+
+.cover__pause:hover,
+.cover__pause:focus-visible {
   color: var(--cover-text);
   border-color: var(--cover-accent);
 }

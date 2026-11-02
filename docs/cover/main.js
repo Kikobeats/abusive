@@ -12,19 +12,13 @@ const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 const DPR_RANGE = [1, 2]
 const MAX_STEP_SECONDS = 0.05
 const LIVE_TIMEOUT_MS = 5000
-const COPIED_MS = 1400
-const COPIED_LABEL = 'Copied'
-const COPIED_STATUS = 'Copied to clipboard'
-const COPY_FAILED_STATUS = 'Could not copy'
 
 const cover = document.querySelector('[data-cover]')
 const canvas = cover.querySelector('canvas')
 const textBlock = cover.querySelector('[data-cover-text]')
-const copyStatus = cover.querySelector('[data-copy-status]')
-const copyReset = new WeakMap()
+const pauseButton = cover.querySelector('[data-pause]')
 
 let stopRendering = () => {}
-let statusReset = null
 
 const hasFailed = () => cover.dataset.mode === 'fallback'
 
@@ -88,10 +82,10 @@ async function loadAtlas () {
 }
 
 async function start () {
-  if (hasFailed()) return
-
   const [vgpu, atlasPixels] = await Promise.all([import(VGPU_URL), loadAtlas()])
+  if (hasFailed()) return
   const adapter = await navigator.gpu.requestAdapter()
+  if (hasFailed()) return
   if (!adapter) return showFallback('no-adapter')
   const timing =
     new URLSearchParams(window.location.search).has('timing') &&
@@ -99,6 +93,7 @@ async function start () {
   const gpu = await vgpu.init(
     timing ? { requiredFeatures: ['timestamp-query'] } : undefined
   )
+  if (hasFailed()) return gpu.dispose()
   gpu.onError?.(error => showFallback(`gpu-error: ${error?.code ?? error}`))
   gpu.lost.then(({ reason }) => showFallback(`device-lost: ${reason}`))
 
@@ -150,9 +145,13 @@ async function start () {
   }
 
   let onScreen = true
+  let paused = false
   const sync = () => {
     const run =
-      !hasFailed() && onScreen && document.visibilityState === 'visible'
+      !hasFailed() &&
+      !paused &&
+      onScreen &&
+      document.visibilityState === 'visible'
     if (run && !loop) {
       last = null
       loop = vgpu.frameLoop(gpu, tick)
@@ -166,6 +165,11 @@ async function start () {
     sync()
   }).observe(cover)
   document.addEventListener('visibilitychange', sync)
+  pauseButton.addEventListener('click', () => {
+    paused = !paused
+    pauseButton.setAttribute('aria-pressed', String(paused))
+    sync()
+  })
   stopRendering = sync
   sync()
 }
@@ -224,48 +228,6 @@ function exposeTimings (gpuTimer) {
   })
 }
 
-function announce (message) {
-  copyStatus.textContent = message
-  clearTimeout(statusReset)
-  statusReset = setTimeout(() => {
-    copyStatus.textContent = ''
-  }, COPIED_MS)
-}
-
-function bindCopy (button, readText, label) {
-  const idle = label?.textContent
-  const showIdle = () => {
-    delete button.dataset.copied
-    if (label) label.textContent = idle
-  }
-  button.addEventListener('click', async () => {
-    clearTimeout(copyReset.get(button))
-    try {
-      await navigator.clipboard.writeText(readText())
-    } catch {
-      showIdle()
-      announce(COPY_FAILED_STATUS)
-      return
-    }
-    button.dataset.copied = 'true'
-    if (label) label.textContent = COPIED_LABEL
-    announce(COPIED_STATUS)
-    copyReset.set(button, setTimeout(showIdle, COPIED_MS))
-  })
-}
-
-function setupCopy () {
-  const command = cover.querySelector('[data-command]')
-  const copyPrompt = cover.querySelector('[data-copy-prompt]')
-  bindCopy(cover.querySelector('[data-copy]'), () => command.textContent)
-  bindCopy(
-    copyPrompt,
-    () => copyPrompt.dataset.prompt,
-    copyPrompt.querySelector('[data-copy-prompt-label]')
-  )
-}
-
-setupCopy()
 setTimeout(() => {
   if (cover.dataset.mode === 'loading') showFallback('timeout')
 }, LIVE_TIMEOUT_MS)

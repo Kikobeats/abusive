@@ -49,6 +49,7 @@ const watchSearchResults = () => {
 }
 
 const COVER_MODULE = 'docs/cover/main.js'
+const COPY_MODULE = 'docs/cover/copy.js'
 const RENDERER_MODULE = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
 
 let coverStarted = false
@@ -75,20 +76,25 @@ const preloadRenderer = () => {
 const coverFallback = fallbackReason()
 if (!coverFallback) preloadRenderer()
 
+const loadModule = path => import(new URL(path, document.baseURI).href)
+
+const showStill = (hero, reason) => {
+  hero.dataset.mode = 'fallback'
+  hero.dataset.reason = reason
+}
+
 const startCover = () => {
   if (coverStarted) return true
   const hero = document.querySelector('[data-cover]')
   if (!hero) return false
   coverStarted = true
+  loadModule(COPY_MODULE)
   if (coverFallback) {
-    hero.dataset.mode = 'fallback'
-    hero.dataset.reason = coverFallback
-  } else {
-    hero.dataset.expectLive = ''
+    showStill(hero, coverFallback)
+    return true
   }
-  import(new URL(COVER_MODULE, document.baseURI).href).catch(() => {
-    hero.dataset.mode = 'fallback'
-  })
+  hero.dataset.expectLive = ''
+  loadModule(COVER_MODULE).catch(() => showStill(hero, 'import-failed'))
   return true
 }
 

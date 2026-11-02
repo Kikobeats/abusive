@@ -13,13 +13,9 @@ const atlasLayout = import('../docs/cover/atlas-layout.js')
 const ROOT = join(__dirname, '..')
 const read = file => readFileSync(join(ROOT, file), 'utf8')
 
-const DESKTOP_TEXT = {
-  right: 614,
-  top: 247,
-  bottom: 653,
-  bodyRight: 512,
-  wordmarkBottom: 339
-}
+const { desktop: DESKTOP_TEXT } = JSON.parse(
+  read('docs/cover/build/text-boxes.json')
+)
 
 const MEASURED_TEXT = [
   [[1440, 900], DESKTOP_TEXT],
@@ -372,6 +368,7 @@ test('the shader reads the atlas with the layout the atlas was drawn with', asyn
   t.is(wgslConstant(wgsl, 'ATLAS_PAD'), ATLAS.pad)
   t.is(wgslConstant(wgsl, 'ATLAS_ASCENT_EM'), ATLAS.ascentEm)
   t.is(wgslConstant(wgsl, 'ATLAS_SPREAD'), ATLAS.spread)
+  t.is(wgslVector(wgsl, 'CELL_EM')[0], ATLAS.advanceEm)
 })
 
 test('the lens magnifies what is under it', t => {
@@ -563,4 +560,22 @@ test('every mobile still frame switches on the scene media query', async t => {
   const mobile = queries.filter(media => media.includes('max-width'))
   t.is(mobile.length, 2)
   for (const media of mobile) t.true(media.startsWith(MOBILE_QUERY), media)
+})
+
+const MAX_AUTOPLAY_SECONDS = 5
+
+test('the scroll hint stops moving within five seconds', t => {
+  const [, seconds, count] = read('docs/cover/cover.css').match(
+    /animation: cover-scroll-hint ([\d.]+)s ease-in-out (\d+);/
+  )
+  t.true(Number(seconds) * Number(count) <= MAX_AUTOPLAY_SECONDS)
+})
+
+test('the pause button shows only while the scene is live', t => {
+  const css = read('docs/cover/cover.css')
+  t.regex(css, /\.cover__pause \{[^}]*display: none;/)
+  t.regex(
+    css,
+    /\.cover-hero\[data-mode="live"\] \.cover__pause \{ display: grid; \}/
+  )
 })

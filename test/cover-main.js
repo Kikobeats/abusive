@@ -12,6 +12,7 @@ register('./fixtures/cover/vgpu-loader.mjs', pathToFileURL(__filename))
 
 const ROOT = join(__dirname, '..')
 const COVER_MAIN = pathToFileURL(join(ROOT, 'docs/cover/main.js')).href
+const COVER_COPY = pathToFileURL(join(ROOT, 'docs/cover/copy.js')).href
 const COVER_MARKUP = readFileSync(join(ROOT, '_coverpage.md'), 'utf8')
 const SITE = 'https://abusive.js.org/'
 const COVER_SIZE = { width: 1440, height: 900 }
@@ -41,7 +42,7 @@ const setGlobal = (name, value) =>
     writable: true
   })
 
-const createGpuHarness = ({ adapter, initError, onError = true }) => {
+const createGpuHarness = ({ adapter, initError, initGate, onError = true }) => {
   const harness = {
     initOptions: 'not called',
     params: [],
@@ -53,7 +54,9 @@ const createGpuHarness = ({ adapter, initError, onError = true }) => {
   harness.init = async options => {
     harness.initOptions = options
     if (initError !== undefined) throw initError
+    await initGate
     const gpu = {
+      dispose: () => (harness.disposed = true),
       lost: new Promise(resolve => {
         harness.loseDevice = reason => resolve({ reason })
       }),
@@ -91,6 +94,8 @@ const openCover = async ({
   gpu = true,
   adapter = { features: new Set() },
   initError,
+  initGate,
+  atlasGate,
   onError,
   fallback,
   mobile = false,
@@ -170,6 +175,7 @@ const openCover = async ({
     }
   }
 
+  const adapterRequests = { count: 0 }
   const clock = { now: 0 }
   const timers = new Map()
   let nextTimer = 0
@@ -178,7 +184,16 @@ const openCover = async ({
   setGlobal('window', window)
   setGlobal('document', document)
   setGlobal('navigator', {
-    ...(gpu ? { gpu: { requestAdapter: async () => adapter } } : {}),
+    ...(gpu
+      ? {
+          gpu: {
+            requestAdapter: async () => {
+              adapterRequests.count++
+              return adapter
+            }
+          }
+        }
+      : {}),
     clipboard: {
       writeText: text => {
         copied.push(text)
@@ -186,7 +201,10 @@ const openCover = async ({
       }
     }
   })
-  setGlobal('fetch', async () => ({ blob: async () => ({}) }))
+  setGlobal('fetch', async () => {
+    await atlasGate
+    return { blob: async () => ({}) }
+  })
   setGlobal('performance', { now: () => clock.now * 1000 })
   setGlobal('setTimeout', (callback, ms) => {
     timers.set(++nextTimer, { callback, ms })
@@ -203,10 +221,17 @@ const openCover = async ({
   const pendingDelays = () =>
     [...timers.values()].map(({ ms }) => ms).sort((a, b) => a - b)
 
-  const gpuHarness = createGpuHarness({ adapter, initError, onError })
+  const gpuHarness = createGpuHarness({
+    adapter,
+    initError,
+    initGate,
+    onError
+  })
   setGlobal('gpuHarness', gpuHarness)
 
-  await import(`${COVER_MAIN}?instance=${++instance}`)
+  instance++
+  await import(`${COVER_COPY}?instance=${instance}`)
+  if (!fallback) await import(`${COVER_MAIN}?instance=${instance}`)
   await settle()
 
   const tick = (seconds = 0) => {
@@ -224,6 +249,7 @@ const openCover = async ({
     gpu: gpuHarness,
     observers,
     measured,
+    adapterRequests,
     copied,
     timers,
     tick,
@@ -251,20 +277,6 @@ const fallbackReason = async options => {
   return { mode, reason }
 }
 
-test.serial(
-  'a cover the docs already sent to the still frame never starts the GPU',
-  async t => {
-    t.deepEqual(await fallbackReason({ fallback: 'reduced-motion' }), {
-      mode: 'fallback',
-      reason: 'reduced-motion'
-    })
-    const page = await openCover({ fallback: 'forced' })
-    t.is(page.gpu.initOptions, 'not called')
-    t.is(page.gpu.loop, null)
-    page.close()
-  }
-)
-
 test.serial('a GPU without an adapter keeps the still frame', async t => {
   t.deepEqual(await fallbackReason({ adapter: null }), {
     mode: 'fallback',
@@ -272,12 +284,15 @@ test.serial('a GPU without an adapter keeps the still frame', async t => {
   })
 })
 
-test.serial('the copy buttons work on the still frame too', async t => {
-  const page = await openCover({ fallback: 'no-webgpu' })
-  await click(page, '[data-copy]')
-  t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
-  page.close()
-})
+test.serial(
+  'the copy buttons work on the still frame, without the renderer',
+  async t => {
+    const page = await openCover({ fallback: 'no-webgpu' })
+    await click(page, '[data-copy]')
+    t.deepEqual(page.copied, ['npm install abusive free-email-domains'])
+    page.close()
+  }
+)
 
 test.serial(
   'the layout is mobile exactly when the mobile media query matches',
@@ -671,3 +686,72 @@ test.serial('the timeout leaves a live or failed cover alone', async t => {
   t.is(failed.cover.dataset.reason, 'no-adapter')
   failed.close()
 })
+
+const deferred = () => {
+  const gate = {}
+  gate.promise = new Promise(resolve => (gate.resolve = resolve))
+  return gate
+}
+
+test.serial(
+  'a timeout during the atlas download stops the start before the GPU',
+  async t => {
+    const atlas = deferred()
+    const page = await openCover({ atlasGate: atlas.promise })
+    page.runTimers(LIVE_TIMEOUT_MS)
+    atlas.resolve()
+    await settle()
+    t.is(page.adapterRequests.count, 0)
+    t.is(page.cover.dataset.reason, 'timeout')
+    page.close()
+  }
+)
+
+test.serial(
+  'a timeout during the adapter request never creates a device',
+  async t => {
+    const adapter = deferred()
+    const page = await openCover({ adapter: adapter.promise })
+    page.runTimers(LIVE_TIMEOUT_MS)
+    adapter.resolve(null)
+    await settle()
+    t.is(page.gpu.initOptions, 'not called')
+    t.is(page.cover.dataset.reason, 'timeout')
+    page.close()
+  }
+)
+
+test.serial(
+  'a device that arrives after the timeout is released unused',
+  async t => {
+    const init = deferred()
+    const page = await openCover({ initGate: init.promise })
+    page.runTimers(LIVE_TIMEOUT_MS)
+    init.resolve()
+    await settle()
+    t.true(page.gpu.disposed)
+    t.deepEqual(page.gpu.params, [])
+    t.is(page.gpu.loops, 0)
+    t.is(page.cover.dataset.reason, 'timeout')
+    page.close()
+  }
+)
+
+test.serial(
+  'the pause button stops the scene until it is pressed again',
+  async t => {
+    const page = await openCover()
+    const pause = page.cover.querySelector('[data-pause]')
+    t.is(pause.getAttribute('aria-pressed'), 'false')
+    pause.click()
+    t.is(pause.getAttribute('aria-pressed'), 'true')
+    t.is(page.gpu.loop, null)
+    page.document.dispatchEvent(new page.window.Event('visibilitychange'))
+    page.observers.intersection([{ isIntersecting: true }])
+    t.is(page.gpu.loop, null)
+    pause.click()
+    t.is(pause.getAttribute('aria-pressed'), 'false')
+    t.not(page.gpu.loop, null)
+    page.close()
+  }
+)

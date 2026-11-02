@@ -140,8 +140,7 @@ function mobileLayout (width, height, textBox) {
   )
   const markWidth = (units.right - units.left) * scale
   const markHeight = (units.bottom - units.top) * scale
-  const boxTop =
-    top + Math.max(MOBILE_COPY_GAP, (floor - top - markHeight) * 0.5)
+  const boxTop = top + Math.max(MOBILE_COPY_GAP, (floor - top - markHeight) / 2)
   const centerY = boxTop - units.top * scale
   const centerX = (width - markWidth) / 2 - units.left * scale
   const wanderX =

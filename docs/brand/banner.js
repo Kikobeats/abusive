@@ -22,7 +22,12 @@ export const BANNER = {
   lockupCenter: 196,
   taglineBaseline: 368,
   chipTop: 426,
-  chipPadding: [18, 30]
+  chipPadding: [18, 30],
+  chipRadius: 14,
+  commandBaseline: 0.78,
+  cornerGlowReach: 0.62,
+  markGlow: { blur: 22, opacity: 0.55 },
+  lift: { dx: 2, dy: 5, blur: 4, opacity: 0.6 }
 }
 
 const CORNER_GLOW = [
@@ -75,7 +80,9 @@ const lockup = ({ fonts, textPath }) => {
     4
   )})`
   return (
-    `<g filter="url(#glow)" opacity="0.55" transform="${translate(
+    `<g filter="url(#glow)" opacity="${
+      BANNER.markGlow.opacity
+    }" transform="${translate(
       -BANNER.glowOffset,
       -BANNER.glowOffset
     )}"><path fill="${
@@ -107,9 +114,9 @@ const command = ({ fonts, textPath }) => {
   const width = promptPath.width + textRun.width + padX * 2
   const height = size + padY * 2
   const left = (BANNER.width - width) / 2
-  const baseline = BANNER.chipTop + padY + size * 0.78
+  const baseline = BANNER.chipTop + padY + size * BANNER.commandBaseline
   return (
-    `<rect x="${left}" y="${BANNER.chipTop}" width="${width}" height="${height}" rx="14" fill="${BANNER.chip}" stroke="${BANNER.chipBorder}"/>` +
+    `<rect x="${left}" y="${BANNER.chipTop}" width="${width}" height="${height}" rx="${BANNER.chipRadius}" fill="${BANNER.chip}" stroke="${BANNER.chipBorder}"/>` +
     `<path fill="${BANNER.accent}" transform="${translate(
       left + padX,
       baseline
@@ -126,13 +133,13 @@ export const bannerSvg = context =>
   '<defs>' +
   markGradient('m') +
   `<radialGradient id="corner" cx="0" cy="0" r="${
-    BANNER.width * 0.62
+    BANNER.width * BANNER.cornerGlowReach
   }" gradientUnits="userSpaceOnUse">${CORNER_GLOW.map(
     ([offset, opacity]) =>
       `<stop offset="${offset}" stop-color="${GRADIENT.bottom}" stop-opacity="${opacity}"/>`
   ).join('')}</radialGradient>` +
-  '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="22"/></filter>' +
-  '<filter id="lift" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="2" dy="5" stdDeviation="4" flood-color="#000" flood-opacity="0.6"/></filter>' +
+  `<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${BANNER.markGlow.blur}"/></filter>` +
+  `<filter id="lift" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="${BANNER.lift.dx}" dy="${BANNER.lift.dy}" stdDeviation="${BANNER.lift.blur}" flood-color="#000" flood-opacity="${BANNER.lift.opacity}"/></filter>` +
   '</defs>' +
   `<rect width="${BANNER.width}" height="${BANNER.height}" fill="${BANNER.background}"/>` +
   `<rect width="${BANNER.width}" height="${BANNER.height}" fill="url(#corner)"/>` +
