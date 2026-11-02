@@ -11,11 +11,11 @@ A free plan invites people to sign up again when the credits run out. They rarel
 ```js
 // derek@gmail.com signed up from 203.0.113.7
 
-await isAbusive({ email: 'd.erek+3@gmail.com', ip: '198.51.100.1' }) // => true, same inbox
-await isAbusive({ email: 'derek2@gmail.com', ip: '198.51.100.2' })   // => true, numbered variant
-await isAbusive({ email: 'jane@gmail.com', ip: '198.51.100.3' })     // => false, different person
-await isAbusive({ email: 'john1987@gmail.com', ip: '198.51.100.4' }) // => false, a year is not a counter
-await isAbusive({ email: 'mike@gmail.com', ip: '203.0.113.7' })      // => true, same IP as derek@
+await isAbusive({ email: 'd.erek+3@gmail.com' })                // => true, same inbox
+await isAbusive({ email: 'derek2@gmail.com' })                  // => true, numbered variant
+await isAbusive({ email: 'jane@gmail.com' })                    // => false
+await isAbusive({ email: 'john1987@gmail.com' })                // => false, 1987 is a year
+await isAbusive({ email: 'mike@gmail.com', ip: '203.0.113.7' }) // => true, derek@'s IP
 ```
 
 - Refuses the next signup without banning the whole domain.
@@ -35,13 +35,13 @@ $ npm install abusive free-email-domains --save
 
 ## Quick start
 
-**abusive** has three rules. Each one is optional, and you turn it on by passing its options. Start with one and add the others when you need them. The examples use `await` at the top level, as in an ES module or the Node REPL.
+**abusive** has three rules. Each one is optional: pass its options to turn it on, starting with one and adding the others when you need them.
 
-| Rule | Refuses | Needs |
-|---|---|---|
-| [Sibling](#check-against-the-users-you-have), another spelling of an address you have | `d.erek+3@gmail.com` when `derek@gmail.com` is a user | A `lookup` listing your users at a domain |
-| [IP](#one-account-per-ip) | A second address from the same IP | A `store`, such as Redis, and a `secret` |
-| [Free email](#refuse-free-email-providers) | `jane@gmail.com`, if you only want work addresses | A domain list |
+- **[Sibling](#check-against-the-users-you-have)** refuses `d.erek+3@gmail.com` when `derek@gmail.com` is already a user. It needs a `lookup` that lists your users.
+- **[IP](#one-account-per-ip)** refuses a second address from the same IP. It needs a `store`, such as Redis, and a `secret`.
+- **[Free email](#refuse-free-email-providers)** refuses `jane@gmail.com` when you only want work addresses. It needs a domain list.
+
+The examples use `await` at the top level, as in an ES module or the Node REPL.
 
 ### Compare two addresses
 
@@ -91,9 +91,9 @@ const { isAbusive } = require('abusive')({
   secret: process.env.ABUSIVE_SECRET
 })
 
-await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, takes the IP
-await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, same person retrying
-await isAbusive({ email: 'john@gmail.com', ip: '203.0.113.7' }) // => true, IP already taken
+await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, claims it
+await isAbusive({ email: 'jane@gmail.com', ip: '203.0.113.7' }) // => false, a retry
+await isAbusive({ email: 'john@gmail.com', ip: '203.0.113.7' }) // => true, IP taken
 ```
 
 - **`secret`** hashes every IP and address before it is stored, so Redis never holds either in the clear. Generate it once with `openssl rand -hex 32` and keep it: changing it forgets every IP.
