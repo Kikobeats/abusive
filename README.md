@@ -190,51 +190,6 @@ A numbered address is a different inbox, so it can belong to a different person:
 
 The fine print, such as canonical form and short mailboxes, is in [Edge cases](#edge-cases).
 
-## isAbusive({ email, ip })
-
-| Argument | Description |
-|---|---|
-| `email` | The address. |
-| `ip` | The client IP. Optional. |
-
-About the `ip`:
-
-- **Use one address you trust,** such as your platform's client IP header, not a raw `X-Forwarded-For` list. If it is your proxy's address, everyone after the first signup is refused.
-- **The first address seen with it claims it,** so pass it only where you accept the signup, never on a check anyone can call.
-- **Missing or malformed,** the IP rule is skipped and nothing is stored.
-
-It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. The same address coming back is not, so a retry passes, while a corrected typo is refused. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
-
-It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs`, as above, and a timeout on your lookup's client.
-
-- **Addresses are compared as written,** after lowercasing and the [canonical form](#edge-cases). `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
-- **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception. Providers also reassign IPs, so with no `ttlMs` a stranger can inherit a used one.
-- **An address with two `@` or with whitespace** never takes an IP or is judged by it, so a host's bad input cannot hold one.
-- **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
-
-### Store
-
-`redisStore(client, [options])` from `abusive/redis` keeps the IPs in Redis.
-
-**Clients.** It works with [ioredis](https://github.com/redis/ioredis), or any client with the same `set(key, value, 'NX')`, `set(key, value, 'PX', ms, 'NX')` and `get`. `client` can also be a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit:
-
-- [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error.
-- `@upstash/redis` fails every check.
-
-Use a custom store with those.
-
-**Options.**
-
-| Option | Default | Description |
-|---|---|---|
-| `prefix` | `'abusive:'` | Prepended to every key. |
-| `timeoutMs` | | Makes a stalled Redis count as a failed check. At most 2147483647. |
-| `ttlMs` | | How long an IP stays taken. Without it, an IP stays taken forever. |
-
-`timeoutMs` and `ttlMs` must be positive integers, or `redisStore` throws.
-
-**Custom store.** To keep IPs somewhere else, pass an object with one method, `claim(key, value)`. It stores `value` under `key` if `key` is free, and resolves the value stored under `key`: `value` when it was free, or the one already there. Keys and values arrive hashed, and how long they last is up to the store. It must be atomic: that is what stops two signups at the same moment from both taking an IP.
-
 ## Lookups
 
 A `lookup` tells **abusive** which addresses you already have. It receives a `domain` and a `keyword` and returns the registered addresses at that domain, as an array, an iterable or an async iterable. The full contract is in [sibling.lookup](#siblinglookup).
@@ -276,6 +231,31 @@ const sqlLookup = async ({ domain, keyword }) => {
 ```
 
 `lower()` matters because `domain` and `keyword` arrive lowercased while your stored addresses may not be. Drop the `keyword` condition to also catch registered addresses that split it, like `d.erek@gmail.com`, at the cost of reading every address at the domain.
+
+## Store
+
+A `store` keeps the IPs for the [IP rule](#one-account-per-ip). Use Redis, or any database that can write a key only when it is free.
+
+### redisStore(client, [options])
+
+From `abusive/redis`. It keeps the IPs in Redis and works with [ioredis](https://github.com/redis/ioredis), or any client with the same `set(key, value, 'NX')`, `set(key, value, 'PX', ms, 'NX')` and `get`. `client` can also be a function returning one, for a client that connects lazily. Clients that take `set` options as an object do not fit:
+
+- [node-redis](https://github.com/redis/node-redis) drops `NX`, so every signup passes without any error.
+- `@upstash/redis` fails every check.
+
+Use a [custom store](#custom-store) with those.
+
+| Option | Default | Description |
+|---|---|---|
+| `prefix` | `'abusive:'` | Prepended to every key. |
+| `timeoutMs` | | Makes a stalled Redis count as a failed check. At most 2147483647. |
+| `ttlMs` | | How long an IP stays taken. Without it, an IP stays taken forever. |
+
+`timeoutMs` and `ttlMs` must be positive integers, or `redisStore` throws.
+
+### Custom store
+
+To keep IPs somewhere else, pass an object with one method, `claim(key, value)`. It stores `value` under `key` if `key` is free, and resolves the value stored under `key`: `value` when it was free, or the one already there. Keys and values arrive hashed, and how long they last is up to the store. It must be atomic: that is what stops two signups at the same moment from both taking an IP.
 
 ## API
 
@@ -325,18 +305,75 @@ const { findSibling } = require('abusive')({
 
 It must be a positive integer: an invalid value throws a `TypeError`, and an invalid value returned by the function rejects `findSibling` with one.
 
-### Methods
+### isAbusive({ email, ip })
 
-| Method | Returns |
+Resolves `true` when the signup is abusive, by any rule you turned on. With `derek@gmail.com` registered:
+
+```js
+await isAbusive({ email: 'derek2@gmail.com', ip: '203.0.113.7' }) // => true
+```
+
+| Argument | Description |
 |---|---|
-| `.isAbusive({ email, ip })` | `Promise` of `true` or `false`. See [isAbusive](#isabusive-email-ip-). |
-| `.findSibling(email)` | `Promise` of the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `sibling.min`), or `null`. |
-| `.isSibling(candidate, existing)` | `true` when the two addresses are siblings. Each argument is an address string or the result of `parseEmail`. |
-| `.isRejectedEmail(email)` | `true` when the address is on a domain in `rejectedDomains`. |
-| `.isRejectedDomain(domain)` | `true` when the domain, or any parent of it, is in `rejectedDomains`. |
-| `.parseEmail(email)` | `{ local, domain }` in canonical form, split at the last `@`, or `null` when the address is malformed. |
+| `email` | The address. |
+| `ip` | The client IP. Optional. |
 
-`isSibling` and `parseEmail` are also available without an instance, as `require('abusive').isSibling` and `require('abusive').parseEmail`.
+About the `ip`:
+
+- **Use one address you trust,** such as your platform's client IP header, not a raw `X-Forwarded-For` list. If it is your proxy's address, everyone after the first signup is refused.
+- **The first address seen with it claims it,** so pass it only where you accept the signup, never on a check anyone can call.
+- **Missing or malformed,** the IP rule is skipped and nothing is stored.
+
+It is abusive when `findSibling` finds a sibling, or when a different address already took this IP. The same address coming back is not, so a retry passes, while a corrected typo is refused. IPv6 addresses are compared by `/64` network. The IP stays taken whether or not that account still exists, for as long as the store keeps it.
+
+It resolves `true` or `false` and never rejects. A check that fails counts as not abusive and reaches `onError`, so an outage does not stop signups. A store or a lookup that hangs without failing makes it hang too, so set `timeoutMs` on the [store](#store) and a timeout on your lookup's client.
+
+- **Addresses are compared as written,** after lowercasing and the [canonical form](#edge-cases). `jane+2@acme.com` from the IP of `jane+1@acme.com` is refused.
+- **People sharing an IP count as one.** The second person in an office or on a mobile carrier is refused, with no exception. Providers also reassign IPs, so with no `ttlMs` a stranger can inherit a used one.
+- **An address with two `@` or with whitespace** never takes an IP or is judged by it, so a host's bad input cannot hold one.
+- **What gets through:** someone who changes IP between signups with a VPN or a mobile reconnect.
+
+### findSibling(email)
+
+Resolves the first registered address that qualifies, in lookup order (a same-inbox sibling, or the numbered sibling that reaches `sibling.min`), or `null`. Use it when you want to know which account matched.
+
+```js
+await findSibling('derek2@gmail.com') // => 'derek@gmail.com'
+await findSibling('jane@gmail.com')   // => null
+```
+
+### isSibling(candidate, existing)
+
+Returns `true` when the two addresses are [siblings](#what-counts-as-a-sibling). Each argument is an address string or the result of `parseEmail`. It needs no instance: `require('abusive').isSibling` works too.
+
+```js
+isSibling('d.erek+3@gmail.com', 'derek@gmail.com') // => true
+```
+
+### isRejectedEmail(email)
+
+Returns `true` when the address is on a domain in `rejectedDomains`.
+
+```js
+isRejectedEmail('jane@gmail.com') // => true
+```
+
+### isRejectedDomain(domain)
+
+Returns `true` when the domain, or any parent of it, is in `rejectedDomains`.
+
+```js
+isRejectedDomain('mail.yahoo.com') // => true, yahoo.com is in the list
+```
+
+### parseEmail(email)
+
+Returns `{ local, domain }` in [canonical form](#edge-cases), split at the last `@`, or `null` when the address is malformed. It needs no instance: `require('abusive').parseEmail` works too.
+
+```js
+parseEmail('D.Erek+3@GoogleMail.com') // => { local: 'd.erek+3', domain: 'googlemail.com' }
+parseEmail('not-an-email')            // => null
+```
 
 ## Edge cases
 
