@@ -65,9 +65,15 @@ export function mountScene (cover) {
   const textBlock = cover.querySelector('[data-cover-text]')
   const pauseButton = cover.querySelector('[data-pause]')
 
+  const teardown = new AbortController()
+  const { signal } = teardown
+
   let stopRendering = () => {}
+  let release = () => {}
+  let liveTimer = null
 
   const hasFailed = () => cover.dataset.mode === 'fallback'
+  const stopped = () => signal.aborted || hasFailed()
 
   function showFallback (reason) {
     cover.dataset.mode = 'fallback'
@@ -107,9 +113,9 @@ export function mountScene (cover) {
       import(VGPU_URL),
       loadAtlas()
     ])
-    if (hasFailed()) return
+    if (stopped()) return
     const adapter = await navigator.gpu.requestAdapter()
-    if (hasFailed()) return
+    if (stopped()) return
     if (!adapter) return showFallback('no-adapter')
     const timing =
       new URLSearchParams(window.location.search).has('timing') &&
@@ -117,7 +123,7 @@ export function mountScene (cover) {
     const gpu = await vgpu.init(
       timing ? { requiredFeatures: ['timestamp-query'] } : undefined
     )
-    if (hasFailed()) return gpu.dispose()
+    if (stopped()) return gpu.dispose()
     gpu.onError?.(error => showFallback(`gpu-error: ${error?.code ?? error}`))
     gpu.lost.then(({ reason }) => showFallback(`device-lost: ${reason}`))
 
@@ -137,9 +143,10 @@ export function mountScene (cover) {
     canvasSurface.onResize(() => {
       state.layout = null
     })
-    new window.ResizeObserver(() => {
+    const textResize = new window.ResizeObserver(() => {
       state.layout = null
-    }).observe(textBlock)
+    })
+    textResize.observe(textBlock)
     document.fonts?.ready.then(() => {
       state.layout = null
     })
@@ -172,8 +179,7 @@ export function mountScene (cover) {
     let paused = false
     const sync = () => {
       const run =
-        cover.isConnected &&
-        !hasFailed() &&
+        !stopped() &&
         !paused &&
         onScreen &&
         document.visibilityState === 'visible'
@@ -185,17 +191,27 @@ export function mountScene (cover) {
         loop = null
       }
     }
-    new window.IntersectionObserver(([entry]) => {
+    const visibility = new window.IntersectionObserver(([entry]) => {
       onScreen = entry.isIntersecting
       sync()
-    }).observe(cover)
-    document.addEventListener('visibilitychange', sync)
-    pauseButton.addEventListener('click', () => {
-      paused = !paused
-      pauseButton.setAttribute('aria-pressed', String(paused))
-      sync()
     })
+    visibility.observe(cover)
+    document.addEventListener('visibilitychange', sync, { signal })
+    pauseButton.addEventListener(
+      'click',
+      () => {
+        paused = !paused
+        pauseButton.setAttribute('aria-pressed', String(paused))
+        sync()
+      },
+      { signal }
+    )
     stopRendering = sync
+    release = () => {
+      textResize.disconnect()
+      visibility.disconnect()
+      gpu.dispose()
+    }
     sync()
   }
 
@@ -223,9 +239,13 @@ export function mountScene (cover) {
     cover.addEventListener('pointerleave', () => {
       state.pointer = null
     })
-    prefersLight.addEventListener('change', () => {
-      state.themeTarget = readTheme()
-    })
+    prefersLight.addEventListener(
+      'change',
+      () => {
+        state.themeTarget = readTheme()
+      },
+      { signal }
+    )
   }
 
   function advance (state, step) {
@@ -233,13 +253,32 @@ export function mountScene (cover) {
     stepLens(state, step)
   }
 
-  reducedMotion.addEventListener('change', () => {
-    if (reducedMotion.matches) showFallback('reduced-motion')
-  })
-  setTimeout(() => {
-    if (cover.dataset.mode === 'loading') showFallback('timeout')
-  }, LIVE_TIMEOUT_MS)
+  function armTimeout () {
+    clearTimeout(liveTimer)
+    if (document.visibilityState !== 'visible') return
+    liveTimer = setTimeout(() => {
+      if (cover.dataset.mode === 'loading') showFallback('timeout')
+    }, LIVE_TIMEOUT_MS)
+  }
+
+  function destroy () {
+    teardown.abort()
+    clearTimeout(liveTimer)
+    stopRendering()
+    release()
+  }
+
+  reducedMotion.addEventListener(
+    'change',
+    () => {
+      if (reducedMotion.matches) showFallback('reduced-motion')
+    },
+    { signal }
+  )
+  document.addEventListener('visibilitychange', armTimeout, { signal })
+  armTimeout()
   start().catch(error =>
     showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
   )
+  return destroy
 }

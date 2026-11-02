@@ -113,7 +113,10 @@ const docsPage = ({
   const mounts = []
   const mountingModule = {
     mountCopy: hero => mounts.push(['copy', hero]),
-    mountScene: hero => mounts.push(['scene', hero])
+    mountScene: hero => {
+      mounts.push(['scene', hero])
+      return () => mounts.push(['unmount', hero])
+    }
   }
   window.importCover = specifier => {
     imports.push(specifier)
@@ -261,6 +264,7 @@ test('a cover docsify renders again is mounted again', async t => {
     ['copy', first],
     ['scene', first],
     ['copy', second],
+    ['unmount', first],
     ['scene', second]
   ])
   t.is('expectLive' in second.dataset, true)

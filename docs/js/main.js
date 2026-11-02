@@ -82,6 +82,7 @@ const showStill = (hero, reason) => {
 }
 
 const mountedHeroes = new WeakSet()
+let unmountScene = () => {}
 
 const mountCover = () => {
   const hero = document.querySelector('[data-cover]')
@@ -96,7 +97,10 @@ const mountCover = () => {
   if (coverFallback) return showStill(hero, coverFallback)
   hero.dataset.expectLive = ''
   loadModule(COVER_MODULE).then(
-    ({ mountScene }) => mountScene(hero),
+    ({ mountScene }) => {
+      unmountScene()
+      unmountScene = mountScene(hero)
+    },
     () => showStill(hero, 'import-failed')
   )
 }

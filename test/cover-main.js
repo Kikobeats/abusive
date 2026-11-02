@@ -101,11 +101,18 @@ const openCover = async ({
   mobile = false,
   prefersLight = false,
   fonts,
+  hidden = false,
   clipboard = () => Promise.resolve()
 } = {}) => {
   const window = new Window({ url })
   const { document } = window
   document.body.innerHTML = COVER_MARKUP
+  if (hidden) {
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true
+    })
+  }
   if (fonts) document.fonts = { ready: fonts }
 
   const cover = document.querySelector('[data-cover]')
@@ -138,8 +145,12 @@ const openCover = async ({
       if (query === '(prefers-reduced-motion: reduce)') return media.reduced
       return query === '(prefers-color-scheme: light)' && media.light
     },
-    addEventListener: (type, listener) => {
-      if (type === 'change') media.listeners.push(listener)
+    addEventListener: (type, listener, options) => {
+      if (type !== 'change') return
+      media.listeners.push(listener)
+      options?.signal?.addEventListener('abort', () => {
+        media.listeners.splice(media.listeners.indexOf(listener), 1)
+      })
     }
   })
   const setPrefersLight = value => {
@@ -155,13 +166,17 @@ const openCover = async ({
   window.requestAnimationFrame = callback => frames.push(callback)
   const flushFrames = () => frames.splice(0).forEach(callback => callback())
 
-  const observers = { intersection: null, resize: null }
+  const observers = { intersection: null, resize: null, disconnected: [] }
   window.IntersectionObserver = class {
     constructor (callback) {
       observers.intersection = callback
     }
 
     observe () {}
+
+    disconnect () {
+      observers.disconnected.push('intersection')
+    }
   }
   window.ResizeObserver = class {
     constructor (callback) {
@@ -169,6 +184,10 @@ const openCover = async ({
     }
 
     observe () {}
+
+    disconnect () {
+      observers.disconnected.push('resize')
+    }
   }
   window.createImageBitmap = async () => ({ width: 2, height: 1 })
   window.OffscreenCanvas = class {
@@ -235,11 +254,12 @@ const openCover = async ({
   setGlobal('gpuHarness', gpuHarness)
 
   instance++
+  const scene = { destroy: null }
   const { mountCopy } = await import(`${COVER_COPY}?instance=${instance}`)
   mountCopy(cover)
   if (!fallback) {
     const { mountScene } = await import(`${COVER_MAIN}?instance=${instance}`)
-    mountScene(cover)
+    scene.destroy = mountScene(cover)
   }
   await settle()
 
@@ -270,6 +290,14 @@ const openCover = async ({
     pendingDelays,
     setPrefersLight,
     setReducedMotion,
+    destroy: () => scene.destroy(),
+    setVisibility: state => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: state,
+        configurable: true
+      })
+      document.dispatchEvent(new window.Event('visibilitychange'))
+    },
     close: () => window.close()
   }
 }
@@ -782,11 +810,52 @@ test.serial(
   }
 )
 
-test.serial('a cover docsify removed stops rendering', async t => {
-  const page = await openCover()
-  page.tick()
-  page.cover.remove()
-  page.document.dispatchEvent(new page.window.Event('visibilitychange'))
-  t.is(page.gpu.loop, null)
-  page.close()
-})
+test.serial(
+  'destroying a scene releases the device, observers and listeners',
+  async t => {
+    const page = await openCover()
+    page.tick()
+    page.flushFrames()
+    page.destroy()
+    t.is(page.gpu.loop, null)
+    t.true(page.gpu.disposed)
+    t.deepEqual(page.observers.disconnected.sort(), ['intersection', 'resize'])
+    t.deepEqual(page.pendingDelays(), [])
+    page.setVisibility('visible')
+    page.setReducedMotion(true)
+    t.is(page.gpu.loop, null)
+    t.is(page.cover.dataset.mode, 'live')
+    page.close()
+  }
+)
+
+test.serial(
+  'a scene destroyed while starting never creates a device',
+  async t => {
+    const adapter = deferred()
+    const page = await openCover({ adapter: adapter.promise })
+    page.destroy()
+    adapter.resolve({ features: new Set() })
+    await settle()
+    t.is(page.gpu.initOptions, 'not called')
+    page.close()
+  }
+)
+
+test.serial(
+  'the live timeout only counts while the tab is visible',
+  async t => {
+    const page = await openCover({ hidden: true })
+    t.deepEqual(page.pendingDelays(), [])
+    page.setVisibility('visible')
+    t.deepEqual(page.pendingDelays(), [LIVE_TIMEOUT_MS])
+    page.setVisibility('hidden')
+    t.deepEqual(page.pendingDelays(), [])
+    page.setVisibility('visible')
+    page.tick()
+    page.flushFrames()
+    page.runTimers(LIVE_TIMEOUT_MS)
+    t.is(page.cover.dataset.mode, 'live')
+    page.close()
+  }
+)
