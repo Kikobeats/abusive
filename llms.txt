@@ -1,6 +1,6 @@
 # abusive
 
-> Detect repeat signups abusing your free plan: numbered, +tag and dotted variants of addresses you already have, second accounts from one IP, plus free email providers.
+> Catch the same person signing up twice.
 
 abusive refuses the next signup without banning the whole domain. It compares a new address against the addresses you already have at that domain, and it can refuse a second account from one IP. It works with any user store and ships no domain list, so you bring the one you trust, such as free-email-domains.
 
