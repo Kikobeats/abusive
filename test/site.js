@@ -163,7 +163,7 @@ const coverStart = options => {
     page.document.querySelector('[data-cover]').dataset
   const preloads = [
     ...page.document.querySelectorAll('link[rel="modulepreload"]')
-  ].map(link => link.href)
+  ].map(link => `${link.hasAttribute('crossorigin')} ${link.href}`)
   const started = page.imports.length
   page.window.close()
   return { mode, reason, expectLive, preloads, started }
@@ -174,7 +174,7 @@ test('a cover that can render live hides the still frame and preloads vgpu', t =
     mode: 'loading',
     reason: undefined,
     expectLive: '',
-    preloads: [RENDERER],
+    preloads: [`true ${RENDERER}`],
     started: 1
   })
 })
