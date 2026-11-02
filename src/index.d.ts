@@ -22,7 +22,6 @@ export type AbusiveReason = 'ip' | 'sibling'
 export interface AbusiveCheck {
   email: string
   ip?: string | null
-  verified?: boolean
 }
 
 export interface SiblingOptions {
