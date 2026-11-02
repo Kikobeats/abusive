@@ -1,5 +1,4 @@
 import { lensShader } from './shaders.js'
-import { createScramble } from './scramble.js'
 import {
   BEST_FRAME_SECONDS,
   INTRO,
@@ -10,18 +9,6 @@ import {
 } from './scene.js'
 
 const VGPU_URL = 'https://cdn.jsdelivr.net/npm/vgpu@0.6.0/+esm'
-const ADDRESS_CHARS = [...'abcdefghijklmnopqrstuvwxyz0123456789.+_-@'].map(
-  char => char.charCodeAt(0)
-)
-const TAGLINE_SCRAMBLE = {
-  speed: 0.6,
-  step: 1,
-  seed: 3,
-  scramble: 6,
-  overdrive: false,
-  range: ADDRESS_CHARS,
-  ignore: [' ', '\u00a0']
-}
 const DPR_RANGE = [1, 2]
 const POINTER_IDLE_SECONDS = 2.8
 const FOLLOW_STIFFNESS = 3.2
@@ -33,7 +20,6 @@ const canvas = cover.querySelector('canvas')
 const textBlock = cover.querySelector('[data-cover-text]')
 const MAX_TILT = 0.05
 
-scrambleTagline()
 setupCopy()
 start().catch(error =>
   showFallback(`init-failed: ${error?.code ?? error?.message ?? error}`)
@@ -69,8 +55,7 @@ function readTheme () {
 
 function contentRight (element) {
   const range = document.createRange()
-  const ink = element.querySelector('.cover__scramble-sizer') ?? element
-  range.selectNodeContents(ink)
+  range.selectNodeContents(element)
   return range.getBoundingClientRect().right
 }
 
@@ -299,22 +284,6 @@ function exposeTimings (gpuTimer) {
   gpuTimer.onResults(spans => {
     if (typeof spans.lens === 'number') samples.push(spans.lens)
   })
-}
-
-function scrambleTagline () {
-  const tagline = cover.querySelector('.cover__tagline')
-  const text = tagline.textContent
-  const sizer = document.createElement('span')
-  sizer.className = 'cover__scramble-sizer'
-  sizer.textContent = text
-  const live = document.createElement('span')
-  live.className = 'cover__scramble-live'
-  live.setAttribute('aria-hidden', 'true')
-  tagline.replaceChildren(sizer, live)
-  tagline.classList.add('cover__scrambled')
-  const scramble = createScramble(live, TAGLINE_SCRAMBLE)
-  scramble.show(text)
-  scramble.play(text)
 }
 
 const COPIED_MS = 1400

@@ -1,6 +1,6 @@
 import { encodeLines } from './content.js'
 import { ATLAS } from './atlas-layout.js'
-import { MARK, toStrikeFrame } from '../brand/mark.js'
+import { MARK, toHandleFrame } from '../brand/mark.js'
 
 const MOBILE_BREAKPOINT = 760
 const DESKTOP_RIGHT_MARGIN = 56
@@ -12,32 +12,21 @@ const DESKTOP_BOTTOM_MARGIN = 64
 const DESKTOP_CENTER_HEIGHT_RATIO = 0.5
 const DESKTOP_SCALE_MIN = 4
 const DESKTOP_SCALE_MAX = 12
-const DESKTOP_ANGLE = -1.08
-const MOBILE_ANGLE = -1.0
+const DESKTOP_ANGLE = 0
+const MOBILE_ANGLE = 0
 const ANGLE_SWAY = 0.035
 const MOBILE_GUTTER = 16
-const MOBILE_SCALE_MAX = 6
+const MOBILE_SCALE_MAX = 7
 const MOBILE_STATUS_RESERVE = 56
 const DRIFT_PX_PER_SECOND = 7
 const RING_SAMPLES = 48
 
-export const MARK_CENTER = [MARK.width / 2, MARK.ring.cy]
+export const MARK_CENTER = [MARK.size / 2, MARK.size / 2]
 
 export const INTRO = Object.freeze({
   appear: 0.6,
-  glide: 2.6,
-  decodeStart: 0.45,
-  decode: 1.9,
-  beamStart: 0.25,
-  beam: 1.6
+  glide: 2.6
 })
-export const TABLE = Object.freeze({
-  firstSwap: 8,
-  period: 6.5,
-  decode: 1.3,
-  encode: 0.6
-})
-export const TABLE_ROWS = Object.freeze({ desktop: 3, mobile: 2 })
 export const BEST_FRAME_SECONDS = 4.2
 
 const clamp01 = value => Math.min(1, Math.max(0, value))
@@ -45,18 +34,18 @@ const easeOutCubic = t => 1 - Math.pow(1 - t, 3)
 const easeInOutCubic = t =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 
-const ringSamples = cx =>
+const ringSamples = () =>
   Array.from({ length: RING_SAMPLES }, (_, i) => {
     const a = (i / RING_SAMPLES) * Math.PI * 2
     return [
-      cx + MARK.ring.outer * Math.cos(a),
-      MARK.ring.cy + MARK.ring.outer * Math.sin(a)
+      MARK.center + MARK.ring.outer * Math.cos(a),
+      MARK.center + MARK.ring.outer * Math.sin(a)
     ]
   })
 
-const strikeCorners = () => {
-  const { from, to, half } = MARK.strike
-  const point = toStrikeFrame(MARK)
+const handleCorners = () => {
+  const { from, to, half } = MARK.handle
+  const point = toHandleFrame(MARK)
   return [
     point(from, -half),
     point(to, -half),
@@ -65,11 +54,9 @@ const strikeCorners = () => {
   ]
 }
 
-export const MARK_OUTLINE = [
-  ...ringSamples(MARK.first),
-  ...ringSamples(MARK.second),
-  ...strikeCorners()
-].map(([x, y]) => [x - MARK_CENTER[0], y - MARK_CENTER[1]])
+export const MARK_OUTLINE = [...ringSamples(), ...handleCorners()].map(
+  ([x, y]) => [x - MARK_CENTER[0], y - MARK_CENTER[1]]
+)
 
 export function markBounds (angle) {
   const c = Math.cos(angle)
@@ -121,10 +108,8 @@ function mobileLayout (width, height, textBox) {
   return {
     mobile: true,
     angle: MOBILE_ANGLE,
-    rows: TABLE_ROWS.mobile,
     fontSize: 11,
     scrim: [0, top],
-    copy: [width, top],
     home: [centerX, centerY],
     wander: [wanderX, 6],
     entry: [width * 0.18, 18],
@@ -150,7 +135,6 @@ function outlineClearsWordmark (angle, scale, homeX, homeY, wordmark) {
 function desktopLayout (width, height, textBox) {
   const textRight = textBox ? textBox.right : width * 0.42
   const bodyRight = textBox?.bodyRight ?? textRight
-  const textBottom = textBox ? textBox.bottom : height * 0.72
   const wordmark = {
     right: textRight,
     bottom: textBox?.wordmarkBottom ?? height * 0.38
@@ -192,10 +176,8 @@ function desktopLayout (width, height, textBox) {
   return {
     mobile: false,
     angle: DESKTOP_ANGLE,
-    rows: TABLE_ROWS.desktop,
     fontSize: width > 1800 ? 14 : 13,
     scrim: [bodyRight, 0],
-    copy: [bodyRight, textBottom],
     home: [homeX, homeY],
     wander,
     entry: [Math.min(260, width - homeX), 34],
@@ -222,41 +204,8 @@ export function layoutFor (width, height, textBox) {
 export function introState (seconds) {
   return {
     appear: easeOutCubic(clamp01(seconds / INTRO.appear)),
-    glide: easeInOutCubic(clamp01(seconds / INTRO.glide)),
-    decode: easeInOutCubic(
-      clamp01((seconds - INTRO.decodeStart) / INTRO.decode)
-    ),
-    beam: easeOutCubic(clamp01((seconds - INTRO.beamStart) / INTRO.beam))
+    glide: easeInOutCubic(clamp01(seconds / INTRO.glide))
   }
-}
-
-function encodeOut (phase, length) {
-  return (
-    1 -
-    easeInOutCubic(
-      clamp01(phase / TABLE.encode - (length - TABLE.encode) / TABLE.encode)
-    )
-  )
-}
-
-export function tableState (seconds) {
-  if (seconds < TABLE.firstSwap) {
-    return {
-      cycle: 0,
-      front: Math.min(
-        introState(seconds).decode,
-        encodeOut(seconds, TABLE.firstSwap)
-      )
-    }
-  }
-  const since = seconds - TABLE.firstSwap
-  const cycle = 1 + Math.floor(since / TABLE.period)
-  const phase = since - (cycle - 1) * TABLE.period
-  const front = Math.min(
-    easeInOutCubic(clamp01(phase / TABLE.decode)),
-    encodeOut(phase, TABLE.period)
-  )
-  return { cycle, front }
 }
 
 export function autopilot (seconds, layout) {
@@ -291,7 +240,6 @@ export function sceneParams ({
   lens
 }) {
   const intro = introState(seconds)
-  const table = tableState(seconds)
   return {
     resolution: [Math.round(width * dpr), Math.round(height * dpr)],
     dpr,
@@ -301,11 +249,7 @@ export function sceneParams ({
     fontSize: layout.fontSize,
     scrim: layout.scrim,
     reveal: intro.appear,
-    drift: driftAt(seconds),
-    beam: intro.beam,
-    rows: layout.rows,
-    table: [table.cycle, table.front],
-    copy: layout.copy
+    drift: driftAt(seconds)
   }
 }
 

@@ -10,7 +10,7 @@
     <canvas class="cover__scene" aria-hidden="true"></canvas>
     <div class="cover__text" data-cover-text>
       <h1 class="cover__wordmark" id="cover-title">
-        <img class="cover__logo" src="static/mark.svg" alt="" width="110" height="54">
+        <img class="cover__logo" src="static/mark.svg" alt="" width="60" height="60">
         abusive
       </h1>
       <p class="cover__tagline">One free plan per&nbsp;person.</p>

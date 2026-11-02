@@ -38,25 +38,35 @@ test('the committed mark and icon are what the brand build generates', async t =
   t.is(read('static/logo.svg', 'utf8'), iconSvg())
 })
 
-test('the two rings do not overlap', async t => {
+test('the dot floats inside the lens without touching the ring', async t => {
   const { MARK } = await brand
-  const { first, second, ring } = MARK
-  t.true(first + ring.outer <= second - ring.outer)
+  t.true(MARK.dot > 0)
+  t.true(MARK.dot < MARK.ring.inner)
+  t.true(MARK.ring.inner < MARK.ring.outer)
 })
 
-test('the strike stays inside the mark box', async t => {
-  const { MARK, toStrikeFrame } = await brand
-  const { from, to, half } = MARK.strike
-  const toMark = toStrikeFrame(MARK)
-  const corners = [
+test('the handle starts inside the ring band and ends outside it', async t => {
+  const { MARK } = await brand
+  const { from, to, half } = MARK.handle
+  t.true(Math.hypot(from, half) > MARK.ring.inner, 'handle pokes into the lens')
+  t.true(from < MARK.ring.outer, 'handle floats off the ring')
+  t.true(to > MARK.ring.outer)
+})
+
+test('the whole mark stays inside its square box', async t => {
+  const { MARK, toHandleFrame } = await brand
+  const { from, to, half } = MARK.handle
+  const toMark = toHandleFrame(MARK)
+  const points = [
     toMark(from, -half),
     toMark(from, half),
     toMark(to, -half),
-    toMark(to, half)
+    toMark(to, half),
+    [MARK.center - MARK.ring.outer, MARK.center - MARK.ring.outer]
   ]
-  for (const [x, y] of corners) {
-    t.true(x >= 0 && x <= MARK.width, `x=${x} leaves the box`)
-    t.true(y >= 0 && y <= MARK.height, `y=${y} leaves the box`)
+  for (const [x, y] of points) {
+    t.true(x >= 0 && x <= MARK.size, `x=${x} leaves the box`)
+    t.true(y >= 0 && y <= MARK.size, `y=${y} leaves the box`)
   }
 })
 

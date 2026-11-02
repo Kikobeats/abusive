@@ -226,8 +226,8 @@ main {
   background: url('mark.svg') center / contain no-repeat;
   content: '';
   filter: var(--mark-glow);
-  height: 20px;
-  width: 41px;
+  height: 24px;
+  width: 24px;
 }
 
 .sidebar-nav ul {
@@ -700,7 +700,7 @@ body:not(.sticky) .sidebar {
 
   .sidebar-toggle::after {
     align-items: center;
-    background: url('mark.svg') left center / 32px no-repeat;
+    background: url('mark.svg') left center / 28px no-repeat;
     color: var(--primary-color);
     content: 'abusive';
     display: flex;
@@ -710,7 +710,7 @@ body:not(.sticky) .sidebar {
     height: 56px;
     left: 64px;
     letter-spacing: -0.02em;
-    padding-left: 42px;
+    padding-left: 38px;
     pointer-events: none;
     position: absolute;
     top: 0;

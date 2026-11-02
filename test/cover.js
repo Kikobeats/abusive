@@ -22,7 +22,6 @@ const DESKTOP_TEXT = {
   wordmarkBottom: 361
 }
 
-const MIN_READOUT_PAIRS = 12
 const PILL_ADDRESSES = 5
 const DEGREES = Math.PI / 180
 const ANGLE_TOLERANCE = 1e-6
@@ -41,21 +40,15 @@ const sameInboxOnly = existing =>
   createAbusive({ sibling: { lookup: () => [existing], min: 2 } })
 
 test('a narrow cover is the mobile layout and a wide cover is the desktop one', async t => {
-  const { layoutFor, TABLE_ROWS } = await scene
-  const mobile = layoutFor(759, 844, DESKTOP_TEXT)
-  const desktop = layoutFor(760, 900, DESKTOP_TEXT)
-  t.true(mobile.mobile)
-  t.false(desktop.mobile)
-  t.is(mobile.rows, TABLE_ROWS.mobile)
-  t.is(desktop.rows, TABLE_ROWS.desktop)
+  const { layoutFor } = await scene
+  t.true(layoutFor(759, 844, DESKTOP_TEXT).mobile)
+  t.false(layoutFor(760, 900, DESKTOP_TEXT).mobile)
 })
 
-test('the desktop scrim and beam mask start at the measured ink', async t => {
+test('the desktop scrim starts at the measured ink', async t => {
   const { layoutFor } = await scene
   const layout = layoutFor(1440, 900, DESKTOP_TEXT)
   t.is(layout.scrim[0], DESKTOP_TEXT.bodyRight)
-  t.is(layout.copy[0], DESKTOP_TEXT.bodyRight)
-  t.is(layout.copy[1], DESKTOP_TEXT.bottom)
 })
 
 test('the mark outline clears the wordmark and stays inside the desktop cover', async t => {
@@ -78,36 +71,6 @@ test('the mark outline clears the wordmark and stays inside the desktop cover', 
         `${width}x${height} overlaps the wordmark at ${px},${py}`
       )
     }
-  }
-})
-
-test('the first readout stays up until the first swap', async t => {
-  const { tableState, TABLE } = await scene
-  t.is(tableState(TABLE.firstSwap - 0.001).cycle, 0)
-  t.is(tableState(TABLE.firstSwap).cycle, 1)
-})
-
-test('every readout verdict is what isSibling says', async t => {
-  const { READOUT, REFUSED, ALLOWED } = await content
-  t.true(READOUT.length >= MIN_READOUT_PAIRS)
-  for (const [candidate, existing, verdict] of READOUT) {
-    t.true([REFUSED, ALLOWED].includes(verdict))
-    t.is(
-      isSibling(candidate, existing) ? REFUSED : ALLOWED,
-      verdict,
-      `${candidate} vs ${existing}`
-    )
-  }
-})
-
-test('every readout pair comes from the README table', async t => {
-  const { READOUT } = await content
-  const readme = read('README.md')
-  for (const [candidate, existing] of READOUT) {
-    t.true(
-      readme.includes(`| \`${candidate}\` | \`${existing}\` |`),
-      `${candidate} vs ${existing}`
-    )
   }
 })
 
@@ -136,40 +99,26 @@ test('a numbered sibling alone does not count as the same inbox', async t => {
   t.true(isSibling('derek2@gmail.com', 'derek1@gmail.com'))
 })
 
-test('encoded rows carry the readout right aligned and the inbox lines split at the local part', async t => {
-  const { encodeLines, READOUT, INBOX_LINES, TABLE_CHARS, REFUSED } =
-    await content
+test('encoded rows carry each inbox line split at the local part', async t => {
+  const { encodeLines, INBOX_LINES } = await content
   const encoded = encodeLines()
-  t.is(encoded.height, READOUT.length + INBOX_LINES.length)
-  const row = index =>
-    String.fromCharCode(
-      ...encoded.data.subarray(
-        index * encoded.width,
-        index * encoded.width + TABLE_CHARS
-      )
-    )
-  READOUT.forEach(([candidate, , verdict], index) => {
-    const text = row(index)
-    t.true(text.startsWith(candidate))
-    t.true(text.endsWith(verdict))
-    t.is(text.length, TABLE_CHARS)
-    t.is(encoded.data[index * encoded.width + 36], candidate.length)
-    t.is(encoded.data[index * encoded.width + 37], TABLE_CHARS)
-    t.is(encoded.data[index * encoded.width + 38], verdict === REFUSED ? 1 : 0)
-  })
+  t.is(encoded.height, INBOX_LINES.length)
   INBOX_LINES.forEach(([local, domain], index) => {
-    const at = (READOUT.length + index) * encoded.width
-    t.true(row(READOUT.length + index).startsWith(`${local}@${domain}`))
+    const at = index * encoded.width
+    const text = `${local}@${domain}`
+    t.is(
+      String.fromCharCode(...encoded.data.subarray(at, at + text.length)),
+      text
+    )
     t.is(encoded.data[at + 36], local.length)
-    t.is(encoded.data[at + 37], local.length + 1 + domain.length)
+    t.is(encoded.data[at + 37], text.length)
   })
 })
 
-test('a pair that does not fit the band is refused', async t => {
-  const { encodeLines, TABLE_CHARS, REFUSED } = await content
-  const candidate = `${'a'.repeat(TABLE_CHARS - REFUSED.length - 1)}@x`
+test('an inbox line that does not fit its cells is refused', async t => {
+  const { encodeLines } = await content
   t.true(
-    t.throws(() => encodeLines([[candidate, 'a@x', REFUSED]], [])) instanceof
+    t.throws(() => encodeLines([['a'.repeat(40), 'x.com']])) instanceof
       RangeError
   )
 })
@@ -177,17 +126,15 @@ test('a pair that does not fit the band is refused', async t => {
 test('the shader draws the frozen mark', async t => {
   const { MARK } = await brand
   const wgsl = read('docs/cover/shaders/lens.wgsl')
-  t.is(wgslConstant(wgsl, 'RING_CY'), MARK.ring.cy)
+  t.is(wgslConstant(wgsl, 'LENS_CXY'), MARK.center)
   t.is(wgslConstant(wgsl, 'RING_OUTER'), MARK.ring.outer)
   t.is(wgslConstant(wgsl, 'RING_INNER'), MARK.ring.inner)
-  t.is(wgslConstant(wgsl, 'FIRST_CX'), MARK.first)
-  t.is(wgslConstant(wgsl, 'SECOND_CX'), MARK.second)
-  t.is(wgslConstant(wgsl, 'STRIKE_FROM'), MARK.strike.from)
-  t.is(wgslConstant(wgsl, 'STRIKE_TO'), MARK.strike.to)
-  t.is(wgslConstant(wgsl, 'STRIKE_HALF'), MARK.strike.half)
-  t.is(wgslConstant(wgsl, 'STRIKE_CORNER'), MARK.strike.corner)
+  t.is(wgslConstant(wgsl, 'HANDLE_FROM'), MARK.handle.from)
+  t.is(wgslConstant(wgsl, 'HANDLE_TO'), MARK.handle.to)
+  t.is(wgslConstant(wgsl, 'HANDLE_HALF'), MARK.handle.half)
+  t.is(wgslConstant(wgsl, 'HANDLE_CORNER'), MARK.handle.corner)
   t.true(
-    Math.abs(wgslConstant(wgsl, 'STRIKE_ANGLE') - MARK.strike.angle) <
+    Math.abs(wgslConstant(wgsl, 'HANDLE_ANGLE') - MARK.handle.angle) <
       ANGLE_TOLERANCE
   )
   t.is(
@@ -196,17 +143,20 @@ test('the shader draws the frozen mark', async t => {
       .slice(1, 3)
       .map(Number)
       .join(','),
-    `${MARK.width / 2},${MARK.ring.cy}`
+    `${MARK.size / 2},${MARK.size / 2}`
   )
 })
 
-test('the shader readout matches the encoded rows', async t => {
-  const { READOUT, INBOX_LINES, TABLE_CHARS } = await content
+test('the shader wall matches the encoded rows', async t => {
+  const { INBOX_LINES } = await content
   const wgsl = read('docs/cover/shaders/lens.wgsl')
-  t.is(wgslConstant(wgsl, 'READOUT_COUNT'), READOUT.length)
-  t.is(wgslConstant(wgsl, 'FIELD_FIRST_ROW'), READOUT.length)
   t.is(wgslConstant(wgsl, 'FIELD_COUNT'), INBOX_LINES.length)
-  t.is(wgslConstant(wgsl, 'TABLE_CHARS'), TABLE_CHARS)
+})
+
+test('the lens magnifies what is under it', t => {
+  const wgsl = read('docs/cover/shaders/lens.wgsl')
+  t.true(wgslConstant(wgsl, 'LENS_ZOOM') > 1)
+  t.true(wgslConstant(wgsl, 'LENS_PINCUSHION') >= 0)
 })
 
 test('the cover copies the agent prompt from the README', t => {

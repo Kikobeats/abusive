@@ -1,17 +1,17 @@
 # Cover
 
-The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh): the abusive mark in glass, two rings with the second struck through, floats over a wall of addresses that all reach the same inbox. The strike bar is the readout: it shows candidate addresses next to the verdict `isSibling` gives them. In the dark theme a spectrum fan converges into the first ring and one white beam leaves it: many addresses, one person.
+The website's cover is a live WebGPU scene rendered with [vgpu](https://vgpu.sh): the abusive magnifying glass, in glass, floats over a wall of addresses that all reach the same inbox. The lens is a real magnifier: it shows the addresses under it enlarged and sharp, bent toward its rim like a convex lens, and it follows the pointer. The lens has no center dot, so nothing hides what it magnifies.
 
 ## How it loads
 
 - `_coverpage.md` holds the markup. docsify renders it, and `docs/js/main.js` imports `main.js` once the markup is in the page.
 - `main.js` imports `vgpu@0.6.0` from jsdelivr, so nothing is bundled. It renders one fullscreen effect (`shaders/lens.wgsl`, prepared into `shaders.js`) with the glyph atlas (`atlas.png`, laid out by `atlas-layout.js`).
 - `scene.js` lays the mark out from `docs/brand/mark.js`, so the glass is the committed logo. `test/cover.js` checks that the shader's copy of the geometry is the same numbers.
-- `content.js` holds the readout pairs, taken from the README table, and the inbox lines behind the glass. `test/cover.js` runs every pair through the real `isSibling`.
+- `content.js` holds the inbox lines on the wall and the same-inbox addresses behind the status pill. `test/cover.js` checks every pill address against the real `findSibling`.
 - Rendering pauses when the cover is off screen or the tab is hidden, and the DPR is capped at 2.
 - Without WebGPU, when the adapter fails, or with `prefers-reduced-motion`, the page keeps the static frame from `fallback-*.webp`. `?fallback=1` forces it. `?timing` collects GPU frame times in `window.__lensGpuMs` where `timestamp-query` exists.
 - The theme follows `prefers-color-scheme` and `data-theme`, and switches live.
-- The tagline scrambles in on load, with address characters as noise. Below it, the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent. `scramble.js` is a vanilla port of use-scramble (see `NOTICES.md`), and it resolves instantly with `prefers-reduced-motion`.
+- Below the tagline, the npm command has a copy button, and "Copy prompt" copies the prompt for a coding agent.
 
 ## Rebuild
 

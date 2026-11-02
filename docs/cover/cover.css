@@ -112,16 +112,13 @@
 }
 
 .cover__logo {
-  width: 1.12em;
+  width: 1em;
   height: auto;
   flex: none;
   translate: 0 0.08em;
   filter: drop-shadow(0.03em 0.05em 0.04em var(--cover-shadow)) drop-shadow(-0.08em -0.1em 0.3em var(--cover-glow));
 }
 
-.cover__scrambled { position: relative; }
-.cover__scramble-sizer { opacity: 0; }
-.cover__scramble-live { position: absolute; inset: 0; }
 
 .cover__tagline {
   margin: 22px 0 0;

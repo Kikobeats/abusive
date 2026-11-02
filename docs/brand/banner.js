@@ -16,8 +16,8 @@ export const BANNER = {
     text: 'npm install abusive free-email-domains',
     size: 26
   },
-  markToXHeight: 1.85,
-  gapToMarkWidth: 0.21,
+  markToXHeight: 2.3,
+  gapToMarkWidth: 0.16,
   glowOffset: 10,
   lockupCenter: 196,
   taglineBaseline: 368,
@@ -42,12 +42,12 @@ const lockup = ({ fonts, textPath }) => {
   const xHeight =
     (fonts.display.tables.os2.sxHeight / fonts.display.unitsPerEm) *
     wordmark.size
-  const markScale = (xHeight * BANNER.markToXHeight) / MARK.height
-  const markWidth = MARK.width * markScale
+  const markScale = (xHeight * BANNER.markToXHeight) / MARK.size
+  const markWidth = MARK.size * markScale
   const gap = markWidth * BANNER.gapToMarkWidth
   const left = (BANNER.width - (markWidth + gap + word.width)) / 2
   const baseline = BANNER.lockupCenter + xHeight / 2
-  const markTop = BANNER.lockupCenter - (MARK.height * markScale) / 2
+  const markTop = BANNER.lockupCenter - (MARK.size * markScale) / 2
   const markTransform = `${translate(left, markTop)} scale(${+markScale.toFixed(
     4
   )})`
